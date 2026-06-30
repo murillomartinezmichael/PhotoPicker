@@ -1,0 +1,33 @@
+# EditorConfig — keep whitespace consistent across editors.
+# Drop into the repo root as `.editorconfig`. Most modern editors pick it up automatically.
+# https://editorconfig.org
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Languages that conventionally use 4-space indent
+[*.{py,cs,java,kt,rb,go}]
+indent_size = 4
+
+# Go uses tabs
+[*.go]
+indent_style = tab
+
+# Makefiles MUST use tabs
+[Makefile]
+indent_style = tab
+
+# Markdown: don't trim trailing whitespace (two trailing spaces = line break)
+[*.md]
+trim_trailing_whitespace = false
+
+# Batch / PowerShell — CRLF
+[*.{bat,cmd,ps1}]
+end_of_line = crlf

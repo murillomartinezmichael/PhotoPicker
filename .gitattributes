@@ -1,0 +1,49 @@
+# .gitattributes — normalize line endings and tell Git how to handle binaries.
+# Drop into the repo root as `.gitattributes`.
+
+# Default: text auto-detected, LF in repo, native on checkout.
+* text=auto eol=lf
+
+# Force LF for shell + Unix files
+*.sh        text eol=lf
+*.bash      text eol=lf
+Makefile    text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Force CRLF for Windows files
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binary files — never modify
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.avif      binary
+*.ico       binary
+*.pdf       binary
+*.zip       binary
+*.tar       binary
+*.gz        binary
+*.7z        binary
+*.mp3       binary
+*.mp4       binary
+*.mov       binary
+*.wav       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.eot       binary
+*.svg       text
+
+# Lockfiles — exclude from PR diff bloat (still tracked, just collapsed in UI)
+package-lock.json   linguist-generated=true -diff
+pnpm-lock.yaml      linguist-generated=true -diff
+yarn.lock           linguist-generated=true -diff
+poetry.lock         linguist-generated=true -diff
+Cargo.lock          linguist-generated=true -diff
+go.sum              linguist-generated=true -diff

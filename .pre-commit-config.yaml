@@ -1,0 +1,51 @@
+# .pre-commit-config.yaml — runs locally on every commit.
+# Drop into repo root, then `pre-commit install` once per clone.
+# https://pre-commit.com
+
+repos:
+  # Universal hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Secret detection — fail the commit if a secret pattern is detected
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+
+  # Python — ruff (lint + format)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: ['--fix']
+      - id: ruff-format
+
+  # JS / TS / Markdown — prettier
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        types_or: [javascript, jsx, ts, tsx, json, yaml, markdown]
+
+  # .NET — uncomment if you use dotnet format
+  # - repo: local
+  #   hooks:
+  #     - id: dotnet-format
+  #       name: dotnet format
+  #       entry: dotnet format --verify-no-changes
+  #       language: system
+  #       pass_filenames: false
+  #       types: [c#]
