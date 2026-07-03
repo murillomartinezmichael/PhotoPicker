@@ -5,7 +5,7 @@
 repos:
   # Universal hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -21,13 +21,13 @@ repos:
 
   # Secret detection — fail the commit if a secret pattern is detected
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.0
+    rev: v8.21.2
     hooks:
       - id: gitleaks
 
   # Python — ruff (lint + format)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.0
+    rev: v0.8.4
     hooks:
       - id: ruff
         args: ['--fix']
@@ -49,3 +49,47 @@ repos:
   #       language: system
   #       pass_filenames: false
   #       types: [c#]
+
+  # Standards enforcement — decoupling + security scanners live at the meta-repo
+  # root (../scripts/). If a project vendors its own copy in `scripts/`, the
+  # local block below runs against it. Otherwise these hooks skip silently.
+  #
+  # Each hook enforces one repo-wide standard doc:
+  #   check-decoupling.py → docs/DECOUPLING_STANDARDS.md
+  #   check-security.py   → docs/audits/SECURITY_AUDIT.md § 7
+  - repo: local
+    hooks:
+      - id: check-decoupling
+        name: check-decoupling — no cross-project imports
+        entry: python scripts/check-decoupling.py .
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        # If the project doesn't vendor the scanner, skip cleanly.
+        files: ^scripts/check-decoupling\.py$|.*
+        exclude: ^scripts/check-decoupling\.py$
+        require_serial: true
+
+      - id: check-security
+        name: check-security — enforce SECURITY_AUDIT.md patterns
+        entry: python scripts/check-security.py .
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^scripts/check-security\.py$|.*
+        exclude: ^scripts/check-security\.py$
+        require_serial: true
+
+      # Prevents the SiteGuide 2026-07-03 outage class: tracked file imports
+      # a first-party module whose target file isn't in the git index.
+      # Railway builds from the tracked tree — untracked target = boot crash.
+      # See scripts/check-tracked-imports.py.
+      - id: check-tracked-imports
+        name: check-tracked-imports — no committed import of an untracked local module
+        entry: python scripts/check-tracked-imports.py .
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^scripts/check-tracked-imports\.py$|.*
+        exclude: ^scripts/check-tracked-imports\.py$
+        require_serial: true
