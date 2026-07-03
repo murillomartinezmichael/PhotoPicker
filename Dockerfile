@@ -1,15 +1,14 @@
 # =============================================================================
-# python.Dockerfile — production-ready Python container (FastAPI / Flask / etc.)
+# PhotoPicker — CLI container. PhotoPicker is a library first (pyproject.toml)
+# and a `photopicker` CLI second. The container gives CI + downstream projects
+# a hermetic way to run the CLI without setting up Python locally.
 #
-# WHY THIS FILE EXISTS
-#   Reference Dockerfile for any Python service. Multi-stage build keeps the
-#   final image small. Non-root user. Cached layer for deps. Healthcheck wired.
-#
-# Build:   docker build -f python.Dockerfile -t my-service:local .
-# Run:     docker run --rm -p 8000:8000 --env-file .env my-service:local
+# Build:   docker build -t photopicker:local .
+# Run:     docker run --rm -v /path/to/photos:/photos photopicker:local \
+#            photopicker --profile aries --input /photos --out /photos/out
 # =============================================================================
 
-# ---------- builder stage: install deps into a venv -------------------------
+# ---------- builder stage: install PhotoPicker as a wheel -------------------
 FROM python:3.11-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -19,16 +18,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /build
 
-# System build deps only (kept out of final image)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy ONLY dep manifests first → this layer caches as long as deps don't change
-COPY requirements.txt ./
+# Deps for the core install come from pyproject.toml. Copy metadata + package
+# first so this layer caches as long as pyproject.toml doesn't change.
+COPY pyproject.toml README.md ./
+COPY photopicker/ ./photopicker/
+
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install -r requirements.txt
+    && /opt/venv/bin/pip install .
 
 # ---------- runtime stage ---------------------------------------------------
 FROM python:3.11-slim AS runtime
@@ -37,22 +38,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# Run as non-root
+# libGL is required by opencv-python at runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system app && useradd --system --gid app --home /app app
 
 WORKDIR /app
 
-# Bring the venv from builder
 COPY --from=builder /opt/venv /opt/venv
-
-# Now copy application code (this layer rebuilds frequently — keep it last)
-COPY --chown=app:app src/ ./src/
 
 USER app
 
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD python -c "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
-
-CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default: print CLI help. Override in `docker run` with real args.
+ENTRYPOINT ["photopicker"]
+CMD ["--help"]
