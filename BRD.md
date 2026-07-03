@@ -69,7 +69,7 @@ A central tool that takes a folder of images and outputs the curated lineup — 
 
 ## 6. Constraints
 
-- Python 3.11++
+- Python 3.12+++
 - CLIP is optional (large dep) — pure-Pillow path works without it
 - CI must pass without GPU / torch
 

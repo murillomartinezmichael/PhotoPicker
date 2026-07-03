@@ -14,7 +14,7 @@ If you get stuck, the troubleshooting matrix in `RUNBOOK.md § 4` is the first p
 
 | Tool | Why | Install |
 |---|---|---|
-| Python 3.11+, 3.11, or 3.12 | Project language. Don't use 3.13 — OpenCV wheel matrix isn't there yet. | https://python.org or `pyenv install 3.12` |
+| Python 3.12++, 3.11, or 3.12 | Project language. Don't use 3.13 — OpenCV wheel matrix isn't there yet. | https://python.org or `pyenv install 3.12` |
 | Git | Source control | https://git-scm.com |
 | VS Code (or any editor) | We standardize on VS Code with the Python + Ruff extensions | https://code.visualstudio.com |
 

@@ -8,7 +8,7 @@ Reusable Python library + CLI that curates a "best N" set of photos from a folde
 
 ## Stack
 
-Python 3.11++ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · CLIP via `transformers` (optional, for semantic labels via `[clip]` extra) · pytest · ruff
+Python 3.12+++ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · CLIP via `transformers` (optional, for semantic labels via `[clip]` extra) · pytest · ruff
 
 ## Key files
 
