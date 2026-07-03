@@ -83,7 +83,7 @@ Michael's project sites currently show too many photos. PhotoPicker centralizes 
 <!-- standards-block-v1 -->
 ## Standards & docs
 
-This project follows the cross-repo engineering standards. See top-level docs at `C:\Users\Michael\Documents\GitHub\`:
+This project follows the cross-repo engineering standards. See the repo-root docs (one level up from this project):
 
 | Doc | Purpose |
 |---|---|
