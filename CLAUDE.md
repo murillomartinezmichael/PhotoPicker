@@ -23,7 +23,7 @@ Python 3.12+++ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CL
 - `photopicker/cache.py` — `CachingClassifier` wraps any classifier, batch- and per-image-aware, persists scores to JSON
 - `photopicker/convert.py` — `copy_or_transcode()` / `transcode_to_jpg()` for the publish step; HEIC → JPG so browsers can render; `resolve_output_name()` for the `original` / `sequential` / `category-rank` rename schemes; `generate_thumbnails(fmt=...)` writes width-scaled JPGs or WebPs for `<picture>` srcset; `to_webp()` writes WebP siblings alongside every JPG
 - `PhotoPick.to_manifest()` on `core.py` — structured dict for frontend integrations; CLI `--manifest PATH` writes it
-- `tests/` — 75 tests, ~93% coverage; use `StubClassifier` (no torch needed) unless testing CLIP
+- `tests/` — 132 tests, 94% coverage; use `StubClassifier` (no torch needed) unless testing CLIP
 - `pyproject.toml` — package metadata, `[clip]` and `[dev]` extras
 
 ## Rules

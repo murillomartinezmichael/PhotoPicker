@@ -88,7 +88,7 @@ pick = pick_photos(folder="./photos", profile_name="aries", classifier=StubClass
 pytest
 ```
 
-36 tests, ~2s on a laptop. Coverage prints to terminal (configured in `pyproject.toml`).
+132 tests, ~12s on a laptop. Coverage prints to terminal (configured in `pyproject.toml`).
 
 ### 2.2 Run one file / test
 
@@ -105,7 +105,7 @@ open htmlcov/index.html        # macOS
 start htmlcov/index.html       # Windows
 ```
 
-Current: **89%** line coverage. CI does not fail on coverage but should stay >80%.
+Current: **94%** line coverage. CI does not fail on coverage but should stay >80%.
 
 ### 2.4 Lint
 

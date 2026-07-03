@@ -8,7 +8,7 @@ Python 3.12+++ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CL
 
 ## Status
 
-**v1 implemented.** 36 unit tests · 89% coverage · ruff-clean · CI green on py3.10/3.11/3.12.
+**v1 implemented.** 132 unit tests · 94% coverage · ruff-clean · CI green on py3.10/3.11/3.12.
 
 ## Install
 
@@ -72,7 +72,7 @@ See `photopicker/profiles/aries.py` as the reference.
 ```bash
 pip install -e ".[dev]"
 ruff check .
-pytest                        # 36 tests, ~2s
+pytest                        # 132 tests, ~12s
 pytest --cov=photopicker
 ```
 

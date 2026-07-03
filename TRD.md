@@ -17,7 +17,7 @@ Reusable Python library + CLI that scores images and selects the best subset per
 |---|---|
 | Cold-start (CLI w/o CLIP) | < 2s |
 | Per-image scoring | < 100ms (no CLIP), < 1s (with CLIP on CPU) |
-| Test coverage | > 80% (achieved 89%) |
+| Test coverage | > 80% (achieved 94%) |
 | CI pass | < 5 min across py3.10/3.11/3.12 matrix |
 
 ## 3. Architecture
@@ -66,7 +66,7 @@ photopicker --folder photos/ --profile aries --output curated/ [--json-out]
 
 ## 6. Testing
 
-- 36 unit tests, 89% coverage
+- 132 unit tests, 94% coverage
 - StubClassifier for tests (no torch in CI)
 - Matrix: 3.10 / 3.11 / 3.12 on GitHub Actions
 - Coverage uploaded as artifact

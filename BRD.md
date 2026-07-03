@@ -2,7 +2,7 @@
 
 **Author:** Michael Martinez
 **Last updated:** 2026-06-29
-**Status:** Implemented v1 (36 tests, 89% coverage, ruff-clean, CI green)
+**Status:** Implemented v1 (132 tests, 94% coverage, ruff-clean, CI green)
 **Stakeholders:** Michael, downstream sites (AriesOutdoorLiving, Big7Construction)
 
 ---
@@ -31,7 +31,7 @@ A central tool that takes a folder of images and outputs the curated lineup — 
 | # | Metric | Target |
 |---|---|---|
 | 1 | Per-site profile picks a tight, themed gallery | ✅ aries/big7/default |
-| 2 | Test coverage | > 80% ✅ (89%) |
+| 2 | Test coverage | > 80% ✅ (94%) |
 | 3 | Distributable via pip wheel | ✅ from CI on main |
 | 4 | New profile = one file + one register call | ✅ |
 | 5 | Lint-clean (ruff) | ✅ green |
