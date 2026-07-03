@@ -4,7 +4,7 @@ ML-driven photo curator for project galleries. Point it at a folder, name a site
 
 ## Stack
 
-Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · CLIP via `transformers` (optional, for semantic labels)
+Python 3.11++ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · CLIP via `transformers` (optional, for semantic labels)
 
 ## Status
 

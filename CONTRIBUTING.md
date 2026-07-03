@@ -5,7 +5,7 @@ Thanks for considering a contribution.
 ## Before you start
 
 - Read `README.md` (what + setup) and `ONBOARDING.md` (day-by-day if you're new)
-- Read [`../ENGINEERING_STANDARDS.md`](../ENGINEERING_STANDARDS.md) — repo-wide rules
+- Read [`../docs/ENGINEERING_STANDARDS.md`](../docs/ENGINEERING_STANDARDS.md) — repo-wide rules
 - For non-trivial changes, open an issue first and propose the approach
 
 ## Local setup

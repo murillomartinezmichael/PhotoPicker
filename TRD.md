@@ -42,7 +42,7 @@ photopicker/
 
 | Concern | Choice | Why |
 |---|---|---|
-| Language | Python 3.10+ | ML ecosystem |
+| Language | Python 3.11++ | ML ecosystem |
 | Image I/O | Pillow + pillow-heif | iPhone uploads need HEIC |
 | Sharpness | OpenCV Laplacian variance | Industry-standard cheap signal |
 | Classification | CLIP via transformers | Strong zero-shot labels; optional |

@@ -32,7 +32,7 @@ Closes #
 
 ## Checklist
 
-- [ ] Names follow `ENGINEERING_STANDARDS.md` § 2
+- [ ] Names follow `../docs/ENGINEERING_STANDARDS.md` § 2
 - [ ] CRUD layering intact (no SQL in routes, no HTTP imports in services)
 - [ ] No secrets in the diff (`gitleaks` will catch but check anyway)
 - [ ] No commented-out code

@@ -39,3 +39,20 @@ Out of scope:
 ## Supported versions
 
 Latest `main` and the most recent tagged release. Older versions are not patched unless they're still in production deployments we operate.
+
+
+## Secret rotation
+
+Per [`docs/SECURITY_STANDARDS.md`](../docs/SECURITY_STANDARDS.md), every secret this project uses is rotated on a schedule. Update the table below at rotation time.
+
+| Secret | Cadence | Owner | Last rotated |
+|---|---|---|---|
+| _e.g. `ANTHROPIC_API_KEY`_ | 90 days | Michael | YYYY-MM-DD |
+| _e.g. `OAUTH_REFRESH_TOKEN`_ | Annually or on suspected compromise | Michael | YYYY-MM-DD |
+| _e.g. `ADMIN_KEY` (per deploy)_ | 90 days | Michael | YYYY-MM-DD |
+
+Removed a secret? Delete its row. Added one? Add its row *before* the next
+deploy — the audit expects this table to reflect the live secret set.
+
+Rotation runbook: see `RUNBOOK.md` § "Rotate a secret" (or `SECURITY_AUDIT.md`
+§5 at the repo root for a worked example across projects).
