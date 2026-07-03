@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..classifier import Classifier
+from ..classifier import Classifier, classify_batch
 from ..scoring import composite_score
 from .registry import Profile, Selection, register_profile
 
@@ -19,9 +19,10 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
     label_list = list(CATEGORY_LABELS.values())
     label_to_cat = {v: k for k, v in CATEGORY_LABELS.items()}
 
+    all_probs = classify_batch(classifier, paths, label_list)
     buckets: dict[str, list[tuple[Path, float]]] = {cat: [] for cat in CATEGORY_LABELS}
     for path in paths:
-        probs = classifier.score(path, label_list)
+        probs = all_probs[path]
         best_label = max(probs, key=lambda label: probs[label])
         cat = label_to_cat[best_label]
         buckets[cat].append((path, composite_score(path)))

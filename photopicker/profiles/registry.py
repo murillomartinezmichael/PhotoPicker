@@ -10,6 +10,7 @@ from ..classifier import Classifier
 @dataclass
 class Selection:
     categorized: dict[str, list[Path]] = field(default_factory=dict)
+    rejected: dict[str, list[Path]] = field(default_factory=dict)
 
     def all_picked(self) -> list[Path]:
         seen: set[Path] = set()
@@ -20,6 +21,9 @@ class Selection:
                     out.append(p)
                     seen.add(p)
         return out
+
+    def reject_counts(self) -> dict[str, int]:
+        return {reason: len(paths) for reason, paths in self.rejected.items() if paths}
 
 
 @dataclass

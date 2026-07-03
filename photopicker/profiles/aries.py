@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..classifier import Classifier
+from ..classifier import Classifier, classify_batch
 from ..scoring import composite_score
 from .registry import Profile, Selection, register_profile
 
@@ -20,9 +20,10 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
     label_list = list(STAGE_LABELS.values())
     label_to_stage = {v: k for k, v in STAGE_LABELS.items()}
 
+    all_probs = classify_batch(classifier, paths, label_list)
     enriched: list[dict] = []
     for path in paths:
-        probs = classifier.score(path, label_list)
+        probs = all_probs[path]
         stage_probs = {label_to_stage[label]: prob for label, prob in probs.items()}
         best_stage = max(stage_probs, key=lambda s: stage_probs[s])
         enriched.append(

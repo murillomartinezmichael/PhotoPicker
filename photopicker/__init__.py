@@ -1,9 +1,20 @@
+from .cache import CachingClassifier
 from .core import PhotoPick, discover_images, pick_photos
-from .profiles import Selection, get_profile, list_profiles, register_profile
+from .profiles import (
+    ConfigError,
+    Selection,
+    build_from_config,
+    get_profile,
+    list_profiles,
+    register_profile,
+)
 
 __all__ = [
+    "CachingClassifier",
+    "ConfigError",
     "PhotoPick",
     "Selection",
+    "build_from_config",
     "discover_images",
     "get_profile",
     "list_profiles",

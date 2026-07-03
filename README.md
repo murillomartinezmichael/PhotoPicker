@@ -27,6 +27,7 @@ pip install -e ".[dev]"       # pytest + coverage + ruff
 | Profile | What it picks |
 |---|---|
 | `aries` | 1 before + 1 during + 1 after + top 6 others (CLIP labels the construction stage) |
+| `aries-gallery` | **Full-batch curation** for portfolio detail pages: twin dedup → perceptual dedup → quality gate → CLIP phase classify → per-phase ranked lists (cap 8 each). Use this when handing raw client folders (mixed HEIC/JPG, some blurry, some near-dupes) straight to a portfolio site. |
 | `big7` | splits photos into `repair` / `build` buckets, top 6 each |
 | `default` | top 9 by composite quality (sharpness + exposure) |
 
