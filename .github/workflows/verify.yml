@@ -146,6 +146,23 @@ jobs:
           fi
           echo "  ✓ .env not tracked"
 
+      # -------------------------------------------------------------------- #
+      # 07 · Secret scanning wiring (companion workflow must exist)
+      # -------------------------------------------------------------------- #
+      - name: 'Check: secret-scan workflow present'
+        run: |
+          set -e
+          test -f .github/workflows/secret-scan.yml \
+            || { echo "  ✗ .github/workflows/secret-scan.yml missing"; exit 1; }
+          echo "  ✓ secret-scan workflow present"
+
+      - name: 'Warn: .gitleaks.toml allowlist'
+        run: |
+          {
+            test -f .gitleaks.toml \
+              || echo "- ⚠ .gitleaks.toml missing — first secret-scan CI run may trip on false positives"
+          } >> $GITHUB_STEP_SUMMARY
+
       - name: 'Summary'
         if: always()
         run: |
