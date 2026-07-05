@@ -93,3 +93,19 @@ repos:
         files: ^scripts/check-tracked-imports\.py$|.*
         exclude: ^scripts/check-tracked-imports\.py$
         require_serial: true
+
+      # verify-standards — full self-audit against ENGINEERING_STANDARDS.md
+      # sections 4 + 6. Runs the same checks CI enforces via
+      # .github/workflows/verify.yml, so a commit that would fail CI
+      # fails locally first.
+      #
+      # Resolution: ../scripts/verify-standards.sh (meta-repo sibling) or
+      # scripts/verify-standards.sh (vendored). Skips if neither exists.
+      # Set VERIFY_STANDARDS_ARGS='--library' for library projects.
+      - id: verify-standards
+        name: verify-standards — self-audit against ENGINEERING_STANDARDS.md
+        entry: bash -c 'if [ -x ../scripts/verify-standards.sh ]; then ../scripts/verify-standards.sh ${VERIFY_STANDARDS_ARGS:-}; elif [ -x scripts/verify-standards.sh ]; then scripts/verify-standards.sh ${VERIFY_STANDARDS_ARGS:-}; else echo "verify-standards.sh not found — skipping"; fi'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        require_serial: true
