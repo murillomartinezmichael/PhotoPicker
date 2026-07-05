@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 
 from .cache import CachingClassifier
-from .classifier import ClipClassifier
+from .classifier import ClipClassifier, StubClassifier
 from .convert import (
     DEFAULT_JPG_QUALITY,
     DEFAULT_WEBP_QUALITY,
@@ -115,6 +115,16 @@ from .profiles import (
     help="WebP quality when --webp is set. 82 ~ visually equal to JPG 92.",
 )
 @click.option("--json-out", is_flag=True, help="Print result as JSON.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help=(
+        "Skip CLIP inference + skip writes to --output and --manifest. Uses "
+        "StubClassifier so the pick step is nearly instant. Useful to sanity-"
+        "check --profile / --config against a real folder before waiting on "
+        "CLIP or committing to a copy."
+    ),
+)
 def main(
     folder: Path,
     profile: str | None,
@@ -129,6 +139,7 @@ def main(
     webp: bool,
     webp_quality: int,
     json_out: bool,
+    dry_run: bool,
 ) -> None:
     """Pick the best photos from FOLDER using PROFILE."""
     if config_path is not None:
@@ -168,8 +179,20 @@ def main(
             click.echo("--thumbnails widths must all be positive", err=True)
             sys.exit(1)
 
-    classifier = CachingClassifier(ClipClassifier(), cache_path) if cache_path else None
+    if dry_run:
+        # StubClassifier returns uniform scores so profiles that use
+        # classify_batch fall back to per-image composite scoring alone. Fast
+        # enough to iterate on --profile choice + --folder without waiting on
+        # CLIP.
+        classifier = StubClassifier()
+    elif cache_path:
+        classifier = CachingClassifier(ClipClassifier(), cache_path)
+    else:
+        classifier = None
     result = pick_photos(folder, profile, classifier=classifier)
+
+    if dry_run:
+        click.echo("[dry-run] CLIP skipped — pick shown below is StubClassifier-uniform.")
 
     if json_out:
         payload = {
@@ -193,7 +216,17 @@ def main(
     thumbnail_paths: dict[Path, dict[int, Path]] = {}
     webp_output_paths: dict[Path, Path] = {}
     thumbnail_webp_paths: dict[Path, dict[int, Path]] = {}
-    if output:
+    if output and dry_run:
+        total_picks = len(result.selection.all_picked())
+        note_bits: list[str] = [f"{total_picks} photos → {output}"]
+        if thumbnails.strip():
+            note_bits.append(f"thumbnails at widths {thumbnails}")
+        if webp:
+            note_bits.append("webp siblings")
+        if rename_scheme != "original":
+            note_bits.append(f"rename via {rename_scheme}")
+        click.echo(f"[dry-run] Would copy: " + ", ".join(note_bits))
+    elif output:
         output.mkdir(parents=True, exist_ok=True)
         total_picks = len(result.selection.all_picked())
         transcoded = 0
@@ -263,7 +296,9 @@ def main(
             parts[0] += " (" + ", ".join(note_bits) + ")"
         click.echo("\n" + parts[0])
 
-    if manifest_path:
+    if manifest_path and dry_run:
+        click.echo(f"[dry-run] Would write manifest to {manifest_path}")
+    elif manifest_path:
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         with manifest_path.open("w", encoding="utf-8") as fh:
             json.dump(

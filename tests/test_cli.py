@@ -398,3 +398,108 @@ def test_cli_writes_manifest(folder_of_images: Path, tmp_path: Path, monkeypatch
     assert len(manifest["picks"]) == 9
     assert all("rank" in p for p in manifest["picks"])
     assert f"Wrote manifest to {manifest_path}" in result.output
+
+
+# --- --dry-run ---------------------------------------------------------------
+
+
+def test_cli_dry_run_prints_prefix_and_does_not_need_patched_classifier(
+    folder_of_images: Path,
+):
+    # Deliberately do NOT patch the classifier — --dry-run must skip CLIP
+    # entirely by using StubClassifier internally. If dry-run tried to
+    # download the CLIP model, this test would time out.
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        ["--folder", str(folder_of_images), "--profile", "default", "--dry-run"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "[dry-run] CLIP skipped" in result.output
+    # Summary still runs — user can eyeball the pick shape.
+    assert "Profile: default" in result.output
+    assert "featured" in result.output
+
+
+def test_cli_dry_run_does_not_write_to_output(
+    folder_of_images: Path, tmp_path: Path,
+):
+    out_dir = tmp_path / "out"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        [
+            "--folder", str(folder_of_images),
+            "--profile", "default",
+            "--output", str(out_dir),
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # No copies written.
+    assert not out_dir.exists()
+    # But the CLI describes what it would have done.
+    assert f"[dry-run] Would copy:" in result.output
+    assert str(out_dir) in result.output
+
+
+def test_cli_dry_run_does_not_write_manifest(
+    folder_of_images: Path, tmp_path: Path,
+):
+    manifest_path = tmp_path / "manifest.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        [
+            "--folder", str(folder_of_images),
+            "--profile", "default",
+            "--manifest", str(manifest_path),
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert not manifest_path.exists()
+    assert f"[dry-run] Would write manifest to {manifest_path}" in result.output
+
+
+def test_cli_dry_run_notes_thumbnails_webp_rename_scheme_in_would_copy_line(
+    folder_of_images: Path, tmp_path: Path,
+):
+    out_dir = tmp_path / "out"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        [
+            "--folder", str(folder_of_images),
+            "--profile", "default",
+            "--output", str(out_dir),
+            "--thumbnails", "400,800",
+            "--webp",
+            "--rename-scheme", "category-rank",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "[dry-run] Would copy:" in result.output
+    assert "thumbnails at widths 400,800" in result.output
+    assert "webp siblings" in result.output
+    assert "rename via category-rank" in result.output
+
+
+def test_cli_dry_run_json_output_still_prints_pick_payload(
+    folder_of_images: Path,
+):
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        [
+            "--folder", str(folder_of_images),
+            "--profile", "default",
+            "--json-out",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # JSON payload is still emitted (nothing about --output/manifest).
+    assert '"profile": "default"' in result.output
+    assert '"selection"' in result.output
