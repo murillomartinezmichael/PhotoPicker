@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 import webbrowser
 from dataclasses import asdict, dataclass, field
 from http import HTTPStatus
@@ -41,6 +42,77 @@ DEFAULT_JPG_QUALITY = 85
 log = logging.getLogger(__name__)
 
 Decision = str  # "keep" | "reject" | ""
+
+
+class CullProgressBroker:
+    """Thread-safe pub/sub for the initial cull's progress state.
+
+    Producer (background cull thread) calls `update(stage, done, total)` as the
+    pipeline moves. Consumers (SSE subscribers on `/progress`) block on
+    `wait_for_change(last_serial)` and receive the current snapshot the moment
+    it changes — no polling on the wire.
+
+    Marking the cull done (`mark_finished`) frees every waiting consumer so the
+    UI's SSE stream returns EOF and the frontend flips to the review grid.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
+        self._stage = ""
+        self._done = 0
+        self._total = 0
+        self._serial = 0
+        self._finished = False
+
+    def update(self, stage: str, done: int, total: int) -> None:
+        with self._cond:
+            if (stage, done, total) == (self._stage, self._done, self._total):
+                return
+            self._stage = stage
+            self._done = int(done)
+            self._total = int(total)
+            self._serial += 1
+            self._cond.notify_all()
+
+    def mark_finished(self) -> None:
+        with self._cond:
+            if self._finished:
+                return
+            self._finished = True
+            self._serial += 1
+            self._cond.notify_all()
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._cond:
+            return {
+                "stage": self._stage,
+                "done": self._done,
+                "total": self._total,
+                "finished": self._finished,
+                "serial": self._serial,
+            }
+
+    def wait_for_change(self, last_serial: int, timeout: float = 15.0) -> dict[str, Any]:
+        """Block until serial > last_serial, or timeout hits. Returns a snapshot."""
+        with self._cond:
+            if self._serial > last_serial:
+                return self._snapshot_locked()
+            self._cond.wait(timeout=timeout)
+            return self._snapshot_locked()
+
+    def _snapshot_locked(self) -> dict[str, Any]:
+        return {
+            "stage": self._stage,
+            "done": self._done,
+            "total": self._total,
+            "finished": self._finished,
+            "serial": self._serial,
+        }
+
+
+NULL_PROGRESS = CullProgressBroker()
+NULL_PROGRESS.mark_finished()  # sentinel used when a session was hydrated (no cull to watch)
 
 
 @dataclass
@@ -126,6 +198,13 @@ class SessionStore:
             for c in self.session.candidates:
                 c.decision = ""
             self.session.history.clear()
+            self._save()
+
+    def hydrate(self, new_session: Session) -> None:
+        """Swap the underlying session — used when the cull thread finishes
+        and the initially-empty store gets the real candidate set."""
+        with self._lock:
+            self.session = new_session
             self._save()
 
     def keepers(self) -> list[Path]:
@@ -301,7 +380,10 @@ def make_handler(
     store: SessionStore,
     thumb_cache: _ThumbCache,
     shutdown_event: threading.Event,
+    progress: CullProgressBroker | None = None,
 ) -> type[BaseHTTPRequestHandler]:
+    progress = progress or NULL_PROGRESS
+
     class Handler(BaseHTTPRequestHandler):
         # Silence per-request stderr — the server logs to `log` explicitly.
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
@@ -314,6 +396,10 @@ def make_handler(
                     self._send_html()
                 elif self.path == "/state":
                     self._send_json(store.get().to_dict())
+                elif self.path == "/progress":
+                    self._send_json(progress.snapshot())
+                elif self.path == "/progress/stream":
+                    self._stream_progress()
                 elif self.path.startswith("/photo/"):
                     self._handle_photo()
                 elif self.path == "/health":
@@ -378,6 +464,33 @@ def make_handler(
             self.send_header("Cache-Control", "private, max-age=3600")
             self.end_headers()
             self.wfile.write(data)
+
+        def _stream_progress(self) -> None:
+            """SSE stream — one event per broker change until finished.
+
+            Bounded by ~5 min wall-clock so a browser tab that forgets to
+            close doesn't hold a thread forever. The frontend reconnects if
+            EventSource fires an error before the finished marker arrives.
+            """
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            last_serial = -1
+            wall_deadline = time.time() + 300  # 5 minute upper bound
+            try:
+                while time.time() < wall_deadline:
+                    snap = progress.wait_for_change(last_serial, timeout=15.0)
+                    last_serial = snap["serial"]
+                    payload = json.dumps(snap)
+                    self.wfile.write(f"data: {payload}\n\n".encode())
+                    self.wfile.flush()
+                    if snap["finished"]:
+                        break
+            except (BrokenPipeError, ConnectionResetError):
+                # Browser closed the tab; that's the happy path.
+                return
 
         # ---- handlers ----
         def _handle_photo(self) -> None:
@@ -521,15 +634,18 @@ def serve(
     open_browser: bool = True,
     host: str = "127.0.0.1",
     port_fallback_tries: int = PORT_FALLBACK_TRIES,
+    progress: CullProgressBroker | None = None,
 ) -> None:
     """Blocking. Runs until POST /shutdown or Ctrl+C.
 
     Only binds to `127.0.0.1` — this is a local review UI, not a shared service.
     If `port` is taken, tries `port+1..port+port_fallback_tries` before failing.
+    When `progress` is given, `/progress/stream` serves an SSE feed of cull
+    pipeline updates; the UI hangs on that until finish, then renders the grid.
     """
     thumb_cache = _ThumbCache()
     shutdown_event = threading.Event()
-    handler_cls = make_handler(store, thumb_cache, shutdown_event)
+    handler_cls = make_handler(store, thumb_cache, shutdown_event, progress=progress)
     httpd, actual_port = _bind_with_fallback(
         handler_cls, host, port, tries=port_fallback_tries
     )
@@ -921,6 +1037,63 @@ INDEX_HTML = r"""<!doctype html>
     z-index: 200;
   }
   #toast.on { opacity: 1; }
+
+  #progress-screen {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    z-index: 300;
+    padding: 40px;
+  }
+  #progress-screen.on { display: flex; }
+  #progress-screen h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    margin: 0 0 8px 0;
+  }
+  #progress-screen .stage {
+    font-size: 20px;
+    color: var(--cyan);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    text-shadow: 0 0 12px rgba(77,229,255,0.6);
+  }
+  #progress-screen .bar {
+    width: 380px; height: 6px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  #progress-screen .bar .fill {
+    position: absolute; top: 0; left: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--cyan), var(--magenta));
+    box-shadow: 0 0 12px rgba(77,229,255,0.6);
+    transition: width 220ms ease;
+  }
+  #progress-screen .bar .fill::after {
+    content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 2px;
+    background: rgba(255,255,255,0.7);
+  }
+  #progress-screen .counts {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+  }
+  #progress-screen .marquee {
+    margin-top: 24px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
 </style>
 </head>
 <body>
@@ -1010,6 +1183,14 @@ INDEX_HTML = r"""<!doctype html>
 </div>
 
 <div id="toast"></div>
+
+<div id="progress-screen">
+  <h2>photopicker · cull in progress</h2>
+  <div class="stage" id="prog-stage">starting</div>
+  <div class="bar"><div class="fill" id="prog-fill" style="width: 0%"></div></div>
+  <div class="counts" id="prog-counts">0 / 0</div>
+  <div class="marquee">no photos will be moved · originals never touched</div>
+</div>
 
 <script>
 'use strict';
@@ -1360,7 +1541,75 @@ $('sort-select').addEventListener('change', (ev) => {
   updatePos();
 });
 
-refresh();
+async function bootstrap() {
+  // Read progress first — if it's not finished yet, show the progress screen
+  // until finished:true arrives on the SSE stream.
+  try {
+    const r = await fetch('/progress');
+    if (r.ok) {
+      const snap = await r.json();
+      if (!snap.finished) {
+        showProgressScreen(snap);
+        subscribeProgress();
+        return;
+      }
+    }
+  } catch (e) {
+    // fall through
+  }
+  await refresh();
+}
+
+function showProgressScreen(snap) {
+  $('progress-screen').classList.add('on');
+  updateProgress(snap);
+}
+
+function hideProgressScreen() {
+  $('progress-screen').classList.remove('on');
+}
+
+function updateProgress(snap) {
+  const stage = (snap.stage || 'starting').replace(/-/g, ' ');
+  $('prog-stage').textContent = stage;
+  const pct = snap.total > 0 ? Math.round((snap.done / snap.total) * 100) : 0;
+  $('prog-fill').style.width = pct + '%';
+  $('prog-counts').textContent = `${snap.done} / ${snap.total}`;
+}
+
+function subscribeProgress() {
+  const es = new EventSource('/progress/stream');
+  es.onmessage = (ev) => {
+    try {
+      const snap = JSON.parse(ev.data);
+      updateProgress(snap);
+      if (snap.finished) {
+        es.close();
+        hideProgressScreen();
+        refresh();
+      }
+    } catch (e) { /* ignore */ }
+  };
+  es.onerror = () => {
+    // Server closed the connection or network hiccup — refetch state.
+    es.close();
+    setTimeout(async () => {
+      const st = await fetchState();
+      if (st.counts && st.counts.total > 0) {
+        hideProgressScreen();
+        state.session = st;
+        renderLeds(state.session.counts);
+        updateFilterCounts();
+        renderGrid();
+        updatePos();
+      } else {
+        subscribeProgress();
+      }
+    }, 500);
+  };
+}
+
+bootstrap();
 </script>
 </body>
 </html>

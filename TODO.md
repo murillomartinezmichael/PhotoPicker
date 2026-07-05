@@ -1,39 +1,54 @@
 # PhotoPicker TODO
 
-## Shipped 2026-07-05 — v0.12 follow-up (same day)
+## SHIPPED this session (2026-07-05, v0.14.0 — RUNG 6 UPGRADE)
 
-- **Sharpest-per-cluster dedup.** Pipeline scores every survivor once *before* perceptual dedup so near-duplicate clusters keep the sharpest instead of first-seen.
-- CLI: `--sort`, `--include-rejects`, `--resume`, `--manifest` shipped with tests.
-- Web UI: filter chips (All / Undecided / Keepers / Rejected / Pipeline rejects), sort dropdown, `F` cycle, capture-time card badges, export manifest.json checkbox.
-- **Fixed the 2 pre-existing aries warmth test failures** with uniform-quality fixtures.
-- New `test_exif_preservation.py` (4 tests) — originals byte-identical after cull, EXIF/mtime survive copy.
-- **Full suite 222/222 green, ruff-clean.** Version 0.11.0 → 0.12.0.
+- `CullProgressBroker` — thread-safe pub/sub with monotonic serial, dedup on identical updates, condition-var wake, idempotent finish (9 unit tests).
+- `GET /progress` (JSON snapshot) + `GET /progress/stream` (SSE) endpoints on the web UI. 5-minute wall-clock cap. Handles browser-disconnect cleanly.
+- `SessionStore.hydrate(new_session)` — mid-flight swap for the live-progress flow.
+- CLI `--live-progress` flag + `_run_live_progress_flow` — browser opens first, cull runs on a background thread that feeds the broker. Vision rerank progress is streamed too. Skipped under `--no-serve` / `--json-out` (those want the sync terminal flow).
+- Web UI progress screen (cyan→magenta gradient bar with white cursor tip, monospace stage label with glow, "no photos will be moved" reassurance).
+- Bootstrap: `/progress` fetch → SSE subscribe if not finished → hide progress screen + render grid on finish. Backwards-compatible when server boots post-cull.
+- Vision-fail hang bug caught in self-review + fixed (missing SDK / rerank exception falls back to offline order + always marks broker finished).
+- CHANGELOG v0.14.0, STATUS ladder rung log, pyproject 0.13.0 → 0.14.0.
+- **265/265 tests green, ruff-clean.** End-to-end SSE smoke verified (`/progress` snapshot, live stream frames, real broker updates).
 
-## Shipped 2026-07-05 — v0.11 cull vertical
+## SHIPPED this session (2026-07-05, v0.13.0)
 
-- `photopicker-cull FOLDER --top N` new console script — offline pipeline (dedup + quality gate + composite score → top N).
-- Local web UI at `http://127.0.0.1:8765` — grid + K/X keyboard + focus view + export dialog. Session persisted to `.photopicker-session.json`.
-- Optional Claude Vision rerank via `--prompt "..."` — parallelized 4-worker `ThreadPoolExecutor`. Guarded by `[vision]` extra (`anthropic>=0.34`). `--no-ai` stays offline.
-- 61 new tests pass (culler, webui, vision, cull_cli). Ruff-clean.
-- `run.sh`/`run.bat` `cull` + `pick` subcommands.
-- README rewritten cull-first. CHANGELOG entry landed at v0.11.0.
-- End-to-end smoke: culled 20 photos to top 5 with copy to output; UI booted on port 18766, `/health`, `/state`, `/photo/0`, `/` all returned real data; shutdown clean.
+**RUNG 1 HARDEN cycle 2 completed** — v0.12 → v0.13:
 
-## Next action (60-second cold-open)
+- **Vision retry+backoff** (`photopicker/vision.py`) — money code per LAW #7 + DECISIONS D-005. Exponential backoff, jitter, env override, retry event callback wired to CLI progress. 10 tests.
+- **Port-in-use auto-fallback** (`photopicker/webui.py::_bind_with_fallback`) — try 10 next ports before failing. 2 tests.
+- **--resume malformed-session fallthrough** — returns bool; corrupt / empty / version-drifted files log + fall through to fresh cull instead of `sys.exit`. 3 tests.
+- **--output permission errors** → clean `click.echo` + `sys.exit(2)`. Same for `--manifest`. 2 tests.
+- **--overwrite / --no-overwrite** — default refuses to write into a non-empty output folder (dotfiles ignored). 3 tests.
+- **ImageUnreadable + robust convert** — thumbnail_bytes / vision_bytes raise a named error on decode failure; web UI /photo returns 500 with the filename, Vision rerank skips + logs. 5 tests + 1 integration.
+- **`scripts/perf_1k.py`** — 500 photos in **9.44s**, 1000 in **17.74s** on local Windows py 3.10. Well under the 10-min gate. Baseline logged into STATUS.md.
+- **`demo/`** — synthetic 40-photo dataset a stranger runs in two commands (`python demo/seed.py && photopicker-cull demo/shoot --top 10`), no API key needed.
+- **STATUS.md + DECISIONS.md** scaffolded per Ignition Prompt Phase 0. D-005 documents the retry decision.
+- **CHANGELOG v0.13.0 entry, README** rewritten with demo quickstart + perf baseline + new flags table.
+- **250/250 tests green, ruff-clean.** Not committed — Michael runs the git add+commit+push.
 
-1. Michael runs:
-   ```bash
-   cd C:/Users/Michael/Documents/GitHub/PhotoPicker
-   git add -A
-   git commit -m "feat(cull): photopicker-cull + web UI + Claude Vision rerank (v0.11)"
-   git push origin main
-   ```
-2. Then the definition-of-done smoke: point `photopicker-cull` at a real 500-photo shoot folder (Aries or Big7). Target: 500 → 30 in under 10 min including click-through.
-3. If step 2 passes: record a 60-second demo video for the portfolio piece + the TikTok / repo header.
+## NEXT ACTION (60-second cold-open)
 
-## Parked
+**RUNG 7 ENVISION — propose (do not build unbidden) one connective step for the fleet.**
 
-- **2 pre-existing test failures** — `tests/test_profiles.py::test_aries_warmth_breaks_tie_within_stage` and `test_aries_warmth_boosts_others_ranking`. Unrelated to cull work; aries warmth-ranking tests need to catch up to how the current `aries.py` interacts with dedup ordering. Not blocking cull ship.
-- **Dedup deprecation warning** — `Pillow 14` will remove `Image.Image.getdata` used in `photopicker/dedup.py:30`. Migrate to `get_flattened_data` before 2027-10-15.
-- **`ANTHROPIC_API_KEY` gate** — `--prompt` requires the env var; document in RUNBOOK the exact command Michael runs to set it (`$env:ANTHROPIC_API_KEY = "sk-ant-..."` in PowerShell).
-- **Open-source polish** — if this becomes a public repo: add a `demo/` folder with 20 CC0 photos, a `docs/demo.gif` of the K/X flow, and a licence header on the widget HTML.
+Two candidates already drafted into CHANGELOG "Envisioned" for the man to bless:
+
+1. **CockpitCloud fleet-preview panel.** `photopicker-cull` writes each cull's `manifest.json` copy into `~/.cockpitcloud/photopicker/<date>.json`. Cockpit renders a "recent culls" widget showing folder + keeper count + prompt + estimated Vision cost. Ties PhotoPicker into the mission-control loop.
+2. **SiteGuide handoff format.** After a client cull, `--export siteguide` bundles keepers + manifest + client-facing README into a zip that drops straight into a Big7 / Aries site's `content/gallery/` Astro content collection — one command from raw shoot to deployable gallery.
+
+Concrete Rung-7 action if the man greenlights either: write `_write_cockpit_ping()` in cli.py (option 1), OR `--export siteguide` mode + `siteguide-gallery.README.md.j2` template (option 2). Both are ≤2-hour work sizes; both directly serve the "connected empire" doctrine.
+
+If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful broker.mark_finished + server shutdown; unreadable session file after `--resume` — auto-timestamp the corrupt file rather than delete; `--sharpness` calibration table in README).
+
+## PARKED (do not open in this session)
+
+- **Pillow 14 dedup deprecation** — `Image.Image.getdata` in `photopicker/dedup.py:30` needs migration to `get_flattened_data` before 2027-10-15.
+- **Web UI: multi-select drag** — hold Shift + click to select a range, K/X to bulk-decide. Nice but non-critical.
+- **Cost telemetry** — track per-run Vision spend (input tokens × price + output tokens × price) and display in the export result box.
+- **iCloud shared photostream ingestion** — `photopicker-cull --icloud-album <name>` reads directly from the iCloud sync folder.
+- **Cloudflare R2 sink** — `--output r2://bucket/prefix/` uploads keepers to R2 alongside the local copy; useful for the AriesOutdoorLiving-V2 photo CDN work.
+
+## QUESTIONS FOR MIKE
+
+_(none this session — every ambiguity was reversible and logged in DECISIONS.md)_

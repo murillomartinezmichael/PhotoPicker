@@ -1,6 +1,6 @@
 [project]
 name = "photopicker"
-version = "0.13.0"
+version = "0.14.0"
 description = "ML-driven photo selection for project galleries (Aries, Big7, etc.)"
 requires-python = ">=3.10"
 authors = [{ name = "Michael Murillo Martinez" }]

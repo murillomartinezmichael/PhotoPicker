@@ -337,6 +337,94 @@ def test_cull_cli_manifest_write_permission_error_exits_cleanly(tmp_path: Path, 
     assert "Cannot write manifest" in result.output
 
 
+def test_cull_cli_live_progress_flow_boots_server_before_cull(tmp_path: Path, monkeypatch):
+    """--live-progress must call `serve` *before* completing the cull, and
+    hydrate the store when cull returns."""
+    folder = _folder(tmp_path)
+
+    events: list[tuple[str, float]] = []
+
+    import photopicker.cli as cli_mod
+    import photopicker.webui as wb
+
+    original_cull = cli_mod.cull
+
+    def _spy_cull(*args, **kwargs):
+        import time
+        events.append(("cull-start", time.perf_counter()))
+        r = original_cull(*args, **kwargs)
+        events.append(("cull-end", time.perf_counter()))
+        return r
+
+    def _spy_serve(*args, **kwargs):
+        import time
+        events.append(("serve-called", time.perf_counter()))
+        # Immediately return so the CLI joins the "server thread" and exits.
+        return None
+
+    monkeypatch.setattr(cli_mod, "cull", _spy_cull)
+    monkeypatch.setattr(wb, "serve", _spy_serve)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_mod.cull_main,
+        [str(folder), "--top", "3", "--live-progress"],
+    )
+    assert result.exit_code == 0, result.output
+
+    kinds = [e[0] for e in events]
+    assert kinds[0] == "serve-called", f"serve must fire before cull; got {kinds}"
+    assert "cull-start" in kinds
+    assert "cull-end" in kinds
+    # cull-end must precede any "cull complete" message on stderr.
+    assert "Cull complete" in result.output
+
+
+def test_cull_cli_live_progress_skipped_without_serve(tmp_path: Path, monkeypatch):
+    """--live-progress + --no-serve: live path is skipped; sync flow runs."""
+    folder = _folder(tmp_path)
+
+    calls = []
+    import photopicker.cli as cli_mod
+    original_flow = cli_mod._run_live_progress_flow
+
+    def _spy(*a, **kw):
+        calls.append("live")
+        return original_flow(*a, **kw)
+
+    monkeypatch.setattr(cli_mod, "_run_live_progress_flow", _spy)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_mod.cull_main,
+        [str(folder), "--top", "3", "--live-progress", "--no-serve"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == [], "live-progress must be skipped when --no-serve"
+
+
+def test_cull_cli_live_progress_skipped_with_json_out(tmp_path: Path, monkeypatch):
+    """--json-out means the operator wants a JSON payload on stdout; live UI
+    would compete with that. Live path is skipped."""
+    folder = _folder(tmp_path)
+
+    calls = []
+    import photopicker.cli as cli_mod
+
+    monkeypatch.setattr(
+        cli_mod, "_run_live_progress_flow",
+        lambda *a, **kw: calls.append("live") or None,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_mod.cull_main,
+        [str(folder), "--top", "3", "--live-progress", "--json-out", "--no-serve"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == []
+
+
 def test_cull_cli_ai_max_attempts_flag_wires_through(tmp_path: Path, monkeypatch):
     folder = _folder(tmp_path)
 

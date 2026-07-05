@@ -2,8 +2,8 @@
 
 **One-liner:** Cull-first photo utility — offline dedup + quality gate + optional Claude Vision rerank, local web UI for K/X review, export with manifest. Reusable library API (`pick_photos`, `cull`) still shipped.
 
-**Version:** 0.13.0 (in flight; v0.12 = `fef41dc` committed 2026-07-05).
-**Ladder position:** **RUNG 1 — HARDEN** (started 2026-07-05).
+**Version:** 0.14.0 (uncommitted; v0.12 = `fef41dc` committed 2026-07-05; v0.13 + v0.14 diff still local).
+**Ladder position:** **RUNG 6 UPGRADE** landed (live cull progress in web UI). Next: RUNG 7 ENVISION (CockpitCloud fleet-preview panel + SiteGuide handoff format — see CHANGELOG "Envisioned").
 
 ## Ladder progress log
 
@@ -11,7 +11,8 @@
 |---|---|---|
 | 2026-07-05 | Cycle 1 complete | v0.11 shipped cull vertical (culler + webui + vision + CLI + 61 tests). |
 | 2026-07-05 | Cycle 1 complete | v0.12 shipped sharpest-per-cluster + filter chips + resume + manifest + EXIF preservation tests (222/222 green). |
-| 2026-07-05 | **RUNG 1 HARDEN** started | Money code (Vision) needs retry/backoff. Port-in-use fallback. Malformed session fallthrough. Output-folder permission errors. |
+| 2026-07-05 | **RUNG 1 HARDEN** done | v0.13: Vision retry+backoff, port fallback, malformed-session fallthrough, output/manifest permission errors, --overwrite guard, ImageUnreadable + web-UI 500 with filename, perf harness (500→9.4s / 1000→17.7s), demo folder, 250/250 tests, ruff-clean. |
+| 2026-07-05 | **RUNG 6 UPGRADE** done | v0.14: `CullProgressBroker` + `/progress` JSON + `/progress/stream` SSE + `SessionStore.hydrate` + `--live-progress` CLI + browser-first flow + progress-screen frontend. Vision-fail hang bug caught in self-review + fixed (falls back to offline order). 265/265 tests green (15 new: 9 broker + 3 HTTP + 3 CLI), ruff-clean. |
 
 ## Live surface
 

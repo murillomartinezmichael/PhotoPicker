@@ -447,6 +447,15 @@ def main(
     ),
 )
 @click.option(
+    "--live-progress/--no-live-progress",
+    default=False,
+    show_default=True,
+    help=(
+        "Boot the web UI FIRST and stream cull progress into it. Useful on "
+        "500+ photo folders where the initial cull takes 10+ seconds."
+    ),
+)
+@click.option(
     "--json-out",
     is_flag=True,
     help="Print the cull result as JSON and exit (still writes --output if set).",
@@ -468,6 +477,7 @@ def cull_main(
     resume: bool,
     manifest_path: Path | None,
     overwrite: bool,
+    live_progress: bool,
     json_out: bool,
 ) -> None:
     """Cull FOLDER down to the best --top N photos.
@@ -499,6 +509,26 @@ def cull_main(
             session_path.unlink()
         except OSError:
             pass
+
+    effective_serve = serve if serve is not None else (output is None)
+    if live_progress and effective_serve and not json_out:
+        _run_live_progress_flow(
+            folder=folder,
+            paths=paths,
+            top_n=top_n,
+            sharpness=sharpness,
+            min_long_edge=min_long_edge,
+            sort_mode=sort_mode,
+            prompt=prompt,
+            no_ai=no_ai,
+            ai_workers=ai_workers,
+            ai_max_attempts=ai_max_attempts,
+            include_rejects=include_rejects,
+            session_path=session_path,
+            port=port,
+            manifest_path=manifest_path,
+        )
+        return
 
     def _progress(stage: str, done: int, total: int) -> None:
         if done in (0, total):
@@ -685,6 +715,184 @@ def _write_manifest(
         "picks": picks,
     }
     manifest_path.write_text(json.dumps(payload, indent=2))
+
+
+def _run_live_progress_flow(
+    *,
+    folder: Path,
+    paths: list[Path],
+    top_n: int,
+    sharpness: float,
+    min_long_edge: int,
+    sort_mode: str,
+    prompt: str | None,
+    no_ai: bool,
+    ai_workers: int,
+    ai_max_attempts: int | None,
+    include_rejects: bool,
+    session_path: Path,
+    port: int,
+    manifest_path: Path | None,
+) -> None:
+    """Live-progress flow: server FIRST, cull in a background thread.
+
+    Browser opens the moment the socket binds; UI renders a progress screen
+    from `/progress/stream`. Cull runs in a bg thread with a progress callback
+    that feeds the broker. When cull finishes, the session store is hydrated
+    with the real candidates and `broker.mark_finished()` flips the UI to the
+    review grid.
+    """
+    import threading
+    import time
+
+    from .webui import (
+        CullProgressBroker,
+        SessionStore,
+        build_session,
+    )
+    from .webui import serve as run_server
+
+    empty_session = build_session(
+        source_folder=folder,
+        keepers=[],
+        scores=None,
+        reject_summary={},
+        input_count=len(paths),
+        prompt=prompt or "",
+        ai_scores=None,
+    )
+    store = SessionStore(session=empty_session, session_path=session_path)
+    broker = CullProgressBroker()
+    broker.update("starting", 0, len(paths))
+
+    server_thread = threading.Thread(
+        target=run_server,
+        kwargs={
+            "store": store,
+            "port": port,
+            "open_browser": True,
+            "progress": broker,
+        },
+        daemon=True,
+        name="photopicker-webui",
+    )
+    server_thread.start()
+    # Give the ThreadingHTTPServer a beat to bind before the cull kicks off.
+    time.sleep(0.15)
+
+    click.echo(
+        f"Culling {len(paths)} -> top {top_n} (live progress in browser)...",
+        err=True,
+    )
+
+    def _progress(stage: str, done: int, total: int) -> None:
+        broker.update(stage, done, total)
+
+    try:
+        result = cull(
+            paths,
+            top_n=top_n,
+            min_sharpness=sharpness,
+            min_long_edge=min_long_edge,
+            sort=sort_mode,
+            progress=_progress,
+        )
+    except Exception as exc:  # unexpected — surface + finish broker so UI unblocks
+        broker.update("error", 0, 0)
+        broker.mark_finished()
+        click.echo(f"Cull failed: {exc}", err=True)
+        sys.exit(1)
+
+    ai_scores: dict[Path, tuple[int, str]] = {}
+    if prompt and not no_ai:
+        try:
+            from .vision import AnthropicVisionClient, rerank
+        except ImportError as exc:  # pragma: no cover
+            click.echo(f"Could not load vision module: {exc}", err=True)
+            sys.exit(1)
+
+        def _on_retry(attempt: int, exc: BaseException, delay: float) -> None:
+            click.echo(
+                f"  vision retry: {type(exc).__name__} attempt {attempt}; "
+                f"sleeping {delay:.1f}s",
+                err=True,
+            )
+
+        try:
+            client = AnthropicVisionClient(
+                max_attempts=ai_max_attempts, on_retry=_on_retry
+            )
+        except RuntimeError as exc:
+            click.echo(
+                f"AI rerank unavailable: {exc}. Skipping vision pass; the "
+                "offline cull result is still valid.",
+                err=True,
+            )
+            client = None
+
+        if client is not None:
+            broker.update("vision", 0, len(result.keepers))
+
+            def _ai_progress(done: int, total: int) -> None:
+                broker.update("vision", done, total)
+
+            try:
+                scores = rerank(
+                    result.keepers,
+                    prompt=prompt,
+                    client=client,
+                    max_workers=ai_workers,
+                    progress=_ai_progress,
+                )
+                result.keepers = [s.path for s in scores]
+                ai_scores = {s.path: (s.score, s.reason) for s in scores}
+            except Exception as exc:  # rerank shouldn't raise but be safe
+                click.echo(
+                    f"Vision rerank failed: {exc}. Falling back to offline "
+                    "order.",
+                    err=True,
+                )
+
+    # Hydrate the session store with the real candidates.
+    rejected_map = result.rejected if include_rejects else None
+    hydrated = build_session(
+        source_folder=folder,
+        keepers=result.keepers,
+        scores=result.scores,
+        reject_summary=result.reject_counts(),
+        input_count=result.total_input,
+        prompt=prompt or "",
+        ai_scores=ai_scores or None,
+        include_rejects=rejected_map,
+    )
+    store.hydrate(hydrated)
+    broker.mark_finished()
+
+    click.echo(result.summary())
+    if manifest_path is not None:
+        try:
+            _write_manifest(
+                manifest_path=manifest_path,
+                folder=folder,
+                top_n=top_n,
+                prompt=prompt or "",
+                result=result,
+                ai_scores=ai_scores,
+            )
+            click.echo(f"Wrote manifest -> {manifest_path}", err=True)
+        except OSError as exc:
+            click.echo(f"Cannot write manifest {manifest_path}: {exc}", err=True)
+
+    click.echo(
+        "Cull complete. Review the grid in the browser. Ctrl+C when done.",
+        err=True,
+    )
+    # Server thread is daemon — block main until interrupted.
+    try:
+        while server_thread.is_alive():
+            server_thread.join(timeout=1.0)
+    except KeyboardInterrupt:
+        click.echo("\nExiting.", err=True)
 
 
 def _resume_ui(folder: Path, session_path: Path, port: int) -> bool:

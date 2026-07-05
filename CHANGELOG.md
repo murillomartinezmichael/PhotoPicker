@@ -7,6 +7,27 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-05
+
+**RUNG 6 UPGRADE** — live cull progress in the web UI. 500+ photo folders no longer show a blank screen for 10+ seconds during the initial cull; the browser opens instantly onto a monospace progress screen that streams `scoring 45/500 → dedup 12/60 → quality-gate 60/60` from the server via SSE, then flips to the review grid the moment cull finishes.
+
+### Added
+- `photopicker.webui.CullProgressBroker` — thread-safe pub/sub. `update(stage, done, total)` dedupes identical states and bumps a monotonic serial. `wait_for_change(last_serial, timeout)` unblocks the moment a new state arrives. `mark_finished()` wakes every waiter with `finished=true`. **9 broker unit tests** covering deduplication, condition-variable wake, multi-waiter fan-out, idempotent finish.
+- `GET /progress` — JSON snapshot of the current broker state (stage, done, total, finished, serial).
+- `GET /progress/stream` — Server-Sent Events. One frame per broker change until `finished:true`, then EOF. 5-minute wall-clock upper bound so a forgotten tab can't strand a thread. Handles `BrokenPipeError` on client disconnect.
+- `SessionStore.hydrate(new_session)` — swap the underlying session in place; used by the live-progress flow to plug the real cull output into an initially-empty store the browser was already showing.
+- CLI `--live-progress / --no-live-progress` (default off) — flips the entry-point order: server opens the browser first, then cull runs on a background thread that feeds the broker. Combines with `--prompt` (Vision rerank progress is streamed too as stage `vision`). Skipped when `--no-serve` or `--json-out` — those want the synchronous terminal flow.
+- New `_run_live_progress_flow` helper in `cli.py` — encapsulates the browser-first orchestration so the sync flow stays untouched (backwards compat for existing tests and callers).
+- Web UI: dedicated progress screen (dark bg, cyan→magenta gradient bar with white cursor tip, monospace stage label with cyan glow, running "done / total" counts, "no photos will be moved · originals never touched" reassurance marquee). Bootstrap fetches `/progress` first and subscribes to `/progress/stream` when the broker isn't finished; otherwise renders the grid straight away (backwards compat when the server was booted post-cull).
+- Tests: **9 broker unit** + **3 HTTP integration** (`/progress` JSON snapshot, `/progress/stream` SSE frame-by-frame, `SessionStore.hydrate` swap) + **3 CLI wiring** (`serve` fires before cull under `--live-progress`, live flow skipped under `--no-serve`, live flow skipped under `--json-out`). **265/265 full suite green, ruff-clean.**
+
+### Fixed
+- Vision retry giving up in the live-progress flow no longer hangs the UI on the progress screen. Missing `[vision]` extra downgrades to offline order + continues; unexpected rerank exceptions log + fall back too. Broker always reaches `finished:true`.
+
+### Envisioned (Rung VII — proposal, not built)
+- **CockpitCloud fleet-preview panel.** `photopicker-cull` writes each cull's manifest.json into `~/.cockpitcloud/photopicker/<date>.json`; Cockpit renders a "recent culls" widget showing folder, keeper count, prompt (if AI), and cost. Ties PhotoPicker into the mission-control loop.
+- **SiteGuide handoff format.** After a client cull, `--export siteguide` bundles the keepers + manifest + a client-facing README into a zip that drops straight into a Big7 / Aries site's `content/gallery/` collection — one command from raw shoot to a deployable gallery. Reduces client-photo turnaround from an afternoon to minutes.
+
 ## [0.13.0] - 2026-07-05
 
 **RUNG 1 HARDEN** — money-code retries, port fallback, malformed-session fallthrough, output-permission clean errors, corrupt-image safety, overwrite guard, plus a 1000-photo perf harness and a demo folder.

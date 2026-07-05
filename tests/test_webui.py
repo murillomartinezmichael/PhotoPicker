@@ -289,14 +289,14 @@ def test_store_undecided_keepers_includes_undecided(tmp_path: Path):
 # --- HTTP server (integration) -----------------------------------------------
 
 
-def _start_server(store: SessionStore, port: int) -> tuple[threading.Thread, threading.Event]:
+def _start_server(store: SessionStore, port: int, progress=None) -> tuple[threading.Thread, threading.Event]:
     from http.server import ThreadingHTTPServer
 
     from photopicker.webui import _ThumbCache, make_handler
 
     thumb_cache = _ThumbCache()
     shutdown_event = threading.Event()
-    handler_cls = make_handler(store, thumb_cache, shutdown_event)
+    handler_cls = make_handler(store, thumb_cache, shutdown_event, progress=progress)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler_cls)
 
     def run():
@@ -558,6 +558,102 @@ def test_bind_with_fallback_raises_when_range_exhausted(tmp_path):
     finally:
         for s in blockers:
             s.close()
+
+
+def test_http_progress_snapshot(tmp_path: Path):
+    """GET /progress returns the broker's current state as JSON."""
+    from photopicker.webui import CullProgressBroker
+
+    store, _ = _fresh_store(tmp_path, n=2)
+    broker = CullProgressBroker()
+    broker.update("scoring", 25, 100)
+
+    port = _free_port()
+    _, shutdown = _start_server(store, port, progress=broker)
+    time.sleep(0.05)
+    try:
+        status, body, ctype = _http_get(f"http://127.0.0.1:{port}/progress")
+        assert status == 200
+        payload = json.loads(body)
+        assert payload["stage"] == "scoring"
+        assert payload["done"] == 25
+        assert payload["total"] == 100
+        assert payload["finished"] is False
+    finally:
+        shutdown.stop()  # type: ignore[attr-defined]
+
+
+def test_http_progress_stream_emits_events_and_finishes(tmp_path: Path):
+    """SSE /progress/stream emits `data: {...}` frames on broker updates,
+    and closes when broker.mark_finished() fires."""
+    from photopicker.webui import CullProgressBroker
+
+    store, _ = _fresh_store(tmp_path, n=2)
+    broker = CullProgressBroker()
+    broker.update("scoring", 10, 100)  # seed with something non-empty
+
+    port = _free_port()
+    _, shutdown = _start_server(store, port, progress=broker)
+    time.sleep(0.05)
+
+    # Producer thread: push a couple updates then finish.
+    def _producer():
+        time.sleep(0.1)
+        broker.update("scoring", 55, 100)
+        time.sleep(0.1)
+        broker.update("dedup", 0, 42)
+        time.sleep(0.1)
+        broker.update("dedup", 42, 42)
+        time.sleep(0.05)
+        broker.mark_finished()
+
+    threading.Thread(target=_producer, daemon=True).start()
+
+    events: list[dict] = []
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/progress/stream", timeout=5
+        ) as resp:
+            assert resp.headers.get("Content-Type", "").startswith("text/event-stream")
+            for _ in range(20):  # bounded loop
+                line = resp.readline().decode()
+                if not line:
+                    break
+                if line.startswith("data:"):
+                    events.append(json.loads(line[len("data:") :].strip()))
+                    if events[-1].get("finished"):
+                        break
+    finally:
+        shutdown.stop()  # type: ignore[attr-defined]
+
+    assert events, "SSE stream produced no events"
+    assert events[-1]["finished"] is True
+    # Should have seen at least one non-finished snapshot before completion.
+    non_final = [e for e in events if not e["finished"]]
+    assert non_final
+    stages = {e["stage"] for e in events}
+    assert stages & {"scoring", "dedup"}
+
+
+def test_session_store_hydrate_swaps_underlying_session(tmp_path: Path):
+    """SessionStore.hydrate lets the CLI plug real cull output into an
+    initially-empty store, so the UI's next /state read shows the grid."""
+    from photopicker.webui import Session, SessionStore, build_session
+
+    empty = Session(source_folder=str(tmp_path), candidates=[])
+    store = SessionStore(session=empty, session_path=tmp_path / ".s.json")
+
+    real_photo = _make(tmp_path, "real.png", 42)
+    new_session = build_session(
+        source_folder=tmp_path,
+        keepers=[real_photo],
+        scores={real_photo: 0.9},
+    )
+    store.hydrate(new_session)
+
+    got = store.get()
+    assert len(got.candidates) == 1
+    assert got.candidates[0].filename == "real.png"
 
 
 def test_http_photo_on_corrupt_file_returns_500_with_filename(tmp_path: Path):
