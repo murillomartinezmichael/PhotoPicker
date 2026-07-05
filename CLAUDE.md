@@ -50,3 +50,4 @@ pytest
 
 - `BRD.md`, `TRD.md` (public API name + scoring dir names are corrected here), `RUNBOOK.md`, `ONBOARDING.md`
 - `../docs/ENGINEERING_STANDARDS.md` + `../docs/TESTING_STANDARDS.md` — repo-wide bar
+- `../docs/BREVITY_STANDARDS.md` — less code beats more when readability holds
