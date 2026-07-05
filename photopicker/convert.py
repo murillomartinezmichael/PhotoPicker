@@ -144,6 +144,11 @@ DEFAULT_VISION_MAX_EDGE = 1568
 DEFAULT_VISION_QUALITY = 82
 
 
+class ImageUnreadable(RuntimeError):
+    """Raised when a photo can't be decoded — corrupt file, permission denied,
+    unsupported subformat. Callers should skip the file, not crash."""
+
+
 def thumbnail_bytes(
     source: Path,
     width: int,
@@ -154,6 +159,8 @@ def thumbnail_bytes(
 
     Aspect ratio is preserved. Widths at or above the source width fall back
     to the source resolution (no upscale — a browser can scale down for free).
+    Raises `ImageUnreadable` if the source can't be decoded; the UI handler
+    surfaces that as a 500 with a real message instead of a stack trace.
     """
     if fmt not in _FORMAT_TO_EXT:
         raise ValueError(f"Unknown fmt {fmt!r}. Choose from {sorted(_FORMAT_TO_EXT)}")
@@ -163,17 +170,22 @@ def thumbnail_bytes(
         save_kwargs["optimize"] = True
     else:
         save_kwargs["method"] = 6
-    with Image.open(source) as img:
-        rgb = img.convert("RGB")
-        original_w, original_h = rgb.size
-        if width >= original_w:
-            resized = rgb
-        else:
-            new_h = round(original_h * (width / original_w))
-            resized = rgb.resize((width, new_h), Image.LANCZOS)
-        buf = io.BytesIO()
-        resized.save(buf, pil_fmt, **save_kwargs)
-        return buf.getvalue()
+    try:
+        with Image.open(source) as img:
+            rgb = img.convert("RGB")
+            original_w, original_h = rgb.size
+            if width >= original_w:
+                resized = rgb
+            else:
+                new_h = round(original_h * (width / original_w))
+                resized = rgb.resize((width, new_h), Image.LANCZOS)
+            buf = io.BytesIO()
+            resized.save(buf, pil_fmt, **save_kwargs)
+            return buf.getvalue()
+    except (OSError, ValueError) as exc:
+        # PIL raises OSError on decode failure / truncated file; ValueError
+        # on unsupported mode. Both are the same operator experience: skip it.
+        raise ImageUnreadable(f"{source.name}: {exc}") from exc
 
 
 def vision_bytes(
@@ -186,18 +198,22 @@ def vision_bytes(
     Claude Vision recommends ≤1568px on the long edge for the best token cost /
     fidelity trade. HEIC inputs are transcoded on the way through. Always
     returns JPEG so the media type is stable regardless of the source format.
+    Raises `ImageUnreadable` on decode failure so the rerank loop can skip.
     """
-    with Image.open(source) as img:
-        rgb = img.convert("RGB")
-        w, h = rgb.size
-        long_edge = max(w, h)
-        if long_edge > max_edge:
-            scale = max_edge / long_edge
-            new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
-            rgb = rgb.resize(new_size, Image.LANCZOS)
-        buf = io.BytesIO()
-        rgb.save(buf, "JPEG", quality=quality, optimize=True)
-        return buf.getvalue(), "image/jpeg"
+    try:
+        with Image.open(source) as img:
+            rgb = img.convert("RGB")
+            w, h = rgb.size
+            long_edge = max(w, h)
+            if long_edge > max_edge:
+                scale = max_edge / long_edge
+                new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
+                rgb = rgb.resize(new_size, Image.LANCZOS)
+            buf = io.BytesIO()
+            rgb.save(buf, "JPEG", quality=quality, optimize=True)
+            return buf.getvalue(), "image/jpeg"
+    except (OSError, ValueError) as exc:
+        raise ImageUnreadable(f"{source.name}: {exc}") from exc
 
 
 def copy_or_transcode(

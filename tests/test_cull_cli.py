@@ -189,6 +189,183 @@ def test_cull_cli_manifest_writes_json(tmp_path: Path):
         assert "capture_time" in pick
 
 
+def test_cull_cli_resume_malformed_falls_through_to_fresh_cull(tmp_path: Path):
+    """A corrupt .photopicker-session.json must NOT crash --resume — it should
+    warn, delete/ignore the file, and run a fresh cull instead."""
+    folder = _folder(tmp_path)
+    session_path = folder / ".photopicker-session.json"
+    session_path.write_text("{ not valid json at all")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--resume", "--no-serve"],
+    )
+    # Falling through means we still exit 0 with a cull summary.
+    assert result.exit_code == 0, result.output
+    assert "unreadable" in result.output.lower() or "unusable" in result.output.lower()
+    assert "Culled" in result.output
+
+
+def test_cull_cli_resume_empty_candidates_falls_through(tmp_path: Path):
+    folder = _folder(tmp_path)
+    session_path = folder / ".photopicker-session.json"
+    session_path.write_text(json.dumps({"source_folder": str(folder), "candidates": []}))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--resume", "--no-serve"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "empty" in result.output.lower() or "unusable" in result.output.lower()
+
+
+def test_cull_cli_resume_version_drift_falls_through(tmp_path: Path):
+    """A session file with an unknown field must not crash — must fall through."""
+    folder = _folder(tmp_path)
+    session_path = folder / ".photopicker-session.json"
+    session_path.write_text(
+        json.dumps({
+            "candidates": [
+                {"idx": 0, "path": str(folder / "img_00.png"),
+                 "filename": "img_00.png",
+                 "score": 0.9,
+                 "unknown_future_field": "boom"},
+            ],
+        })
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--resume", "--no-serve"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "different version" in result.output.lower() or "unusable" in result.output.lower()
+
+
+def test_cull_cli_output_permission_error_exits_cleanly(tmp_path: Path, monkeypatch):
+    """When --output is unwritable, cull_main should surface a clean click.echo
+    error message and exit != 0 (not a stack trace)."""
+    folder = _folder(tmp_path)
+    out = tmp_path / "keepers"
+
+    # Monkeypatch mkdir on the specific Path to raise PermissionError.
+    original_mkdir = Path.mkdir
+
+    def _boom(self, *args, **kwargs):
+        if self == out:
+            raise PermissionError("access denied")
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _boom)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--no-serve", "--output", str(out)],
+    )
+    assert result.exit_code == 2
+    assert "Cannot create output folder" in result.output
+
+
+def test_cull_cli_overwrite_default_off_refuses_non_empty_output(tmp_path: Path):
+    folder = _folder(tmp_path)
+    out = tmp_path / "keepers"
+    out.mkdir()
+    (out / "existing.txt").write_text("pre-existing")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--no-serve", "--output", str(out)],
+    )
+    assert result.exit_code == 2
+    assert "non-empty folder" in result.output
+
+
+def test_cull_cli_overwrite_flag_allows_non_empty_output(tmp_path: Path):
+    folder = _folder(tmp_path)
+    out = tmp_path / "keepers"
+    out.mkdir()
+    (out / "existing.txt").write_text("pre-existing")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--no-serve",
+         "--output", str(out), "--overwrite"],
+    )
+    assert result.exit_code == 0, result.output
+    # Existing file left in place; new keepers alongside it.
+    assert (out / "existing.txt").exists()
+
+
+def test_cull_cli_overwrite_ignores_dotfiles_when_probing(tmp_path: Path):
+    """Dotfiles in the output folder should NOT trigger the non-empty guard —
+    that's how Windows / macOS / IDEs leave metadata behind."""
+    folder = _folder(tmp_path)
+    out = tmp_path / "keepers"
+    out.mkdir()
+    (out / ".DS_Store").write_text("mac metadata")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--no-serve", "--output", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_cull_cli_manifest_write_permission_error_exits_cleanly(tmp_path: Path, monkeypatch):
+    folder = _folder(tmp_path)
+    manifest = tmp_path / "manifest.json"
+
+    def _boom(self, *args, **kwargs):
+        raise PermissionError("no write here")
+
+    # Patch Path.write_text globally for the test.
+    monkeypatch.setattr(Path, "write_text", _boom)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--no-serve", "--manifest", str(manifest)],
+    )
+    assert result.exit_code == 2
+    assert "Cannot write manifest" in result.output
+
+
+def test_cull_cli_ai_max_attempts_flag_wires_through(tmp_path: Path, monkeypatch):
+    folder = _folder(tmp_path)
+
+    from photopicker import vision as vision_mod
+
+    captured = {}
+
+    class RecordingClient:
+        def __init__(self, *, max_attempts=None, on_retry=None):
+            captured["max_attempts"] = max_attempts
+            captured["on_retry"] = on_retry
+
+        def score_photo(self, *a, **k):
+            return 70, "ok"
+
+    monkeypatch.setattr(vision_mod, "AnthropicVisionClient", RecordingClient)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.cull_main,
+        [str(folder), "--top", "3", "--no-serve",
+         "--prompt", "hero shots",
+         "--ai-max-attempts", "6"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["max_attempts"] == 6
+    assert captured["on_retry"] is not None
+
+
 def test_cull_cli_resume_skips_pipeline(tmp_path: Path):
     """If the session file exists, --resume should skip the cull entirely."""
     folder = _folder(tmp_path)

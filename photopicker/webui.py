@@ -30,7 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from .convert import copy_or_transcode, thumbnail_bytes
+from .convert import ImageUnreadable, copy_or_transcode, thumbnail_bytes
 
 DEFAULT_PORT = 8765
 SESSION_FILE = ".photopicker-session.json"
@@ -405,6 +405,15 @@ def make_handler(
             path = Path(session.candidates[idx].path)
             try:
                 data = thumb_cache.get_or_render(path, width)
+            except ImageUnreadable as exc:
+                # Corrupt or unreadable source — return 500 with a real
+                # message so the operator sees "file broken" not "server error".
+                log.warning("thumbnail unreadable: %s", exc)
+                self._send_text(
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                    f"could not read {path.name}",
+                )
+                return
             except Exception:
                 log.exception("thumbnail render failed for %s", path)
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "thumbnail failed")
@@ -477,20 +486,53 @@ def make_handler(
     return Handler
 
 
+PORT_FALLBACK_TRIES = 10
+
+
+def _bind_with_fallback(
+    handler_cls: type[BaseHTTPRequestHandler],
+    host: str,
+    port: int,
+    tries: int = PORT_FALLBACK_TRIES,
+) -> tuple[ThreadingHTTPServer, int]:
+    """Try `port`, then `port+1..port+tries`. Return `(httpd, actual_port)`.
+
+    Raises `OSError` only when EVERY tried port is taken. This is the operator
+    UX we want: "8765 is busy, running on 8766 instead" beats a hard fail.
+    """
+    last_exc: OSError | None = None
+    for offset in range(tries + 1):
+        candidate = port + offset
+        try:
+            return ThreadingHTTPServer((host, candidate), handler_cls), candidate
+        except OSError as exc:
+            last_exc = exc
+            log.info("port %d unavailable (%s); trying next", candidate, exc)
+    assert last_exc is not None
+    raise OSError(
+        f"Could not bind on {host}:{port}..{port + tries} — every port in the "
+        f"fallback range was taken. Pass --port with an unused port."
+    ) from last_exc
+
+
 def serve(
     store: SessionStore,
     port: int = DEFAULT_PORT,
     open_browser: bool = True,
     host: str = "127.0.0.1",
+    port_fallback_tries: int = PORT_FALLBACK_TRIES,
 ) -> None:
     """Blocking. Runs until POST /shutdown or Ctrl+C.
 
     Only binds to `127.0.0.1` — this is a local review UI, not a shared service.
+    If `port` is taken, tries `port+1..port+port_fallback_tries` before failing.
     """
     thumb_cache = _ThumbCache()
     shutdown_event = threading.Event()
     handler_cls = make_handler(store, thumb_cache, shutdown_event)
-    httpd = ThreadingHTTPServer((host, port), handler_cls)
+    httpd, actual_port = _bind_with_fallback(
+        handler_cls, host, port, tries=port_fallback_tries
+    )
 
     watcher = threading.Thread(
         target=lambda: (shutdown_event.wait(), httpd.shutdown()),
@@ -498,14 +540,16 @@ def serve(
     )
     watcher.start()
 
-    url = f"http://{host}:{port}/"
+    url = f"http://{host}:{actual_port}/"
     if open_browser:
         try:
             webbrowser.open(url)
         except Exception:
             pass
     log.info("photopicker web UI at %s", url)
-    print(f"photopicker cull UI → {url}  (Ctrl+C to stop)")
+    if actual_port != port:
+        print(f"photopicker: port {port} was busy; landed on {actual_port}")
+    print(f"photopicker cull UI -> {url}  (Ctrl+C to stop)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

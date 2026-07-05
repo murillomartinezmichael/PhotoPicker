@@ -380,6 +380,15 @@ def main(
     help="Parallel Claude Vision requests when reranking.",
 )
 @click.option(
+    "--ai-max-attempts",
+    type=click.IntRange(1, 10),
+    default=None,
+    help=(
+        "Retry each Vision call up to N times with exponential backoff on rate "
+        "limits / transient failures. Env override: PHOTOPICKER_VISION_MAX_ATTEMPTS."
+    ),
+)
+@click.option(
     "--sharpness",
     type=float,
     default=DEFAULT_MIN_SHARPNESS,
@@ -429,6 +438,15 @@ def main(
     ),
 )
 @click.option(
+    "--overwrite/--no-overwrite",
+    default=False,
+    show_default=True,
+    help=(
+        "Allow --output to write into a folder that already has files. Off by "
+        "default so a stray path doesn't clobber a prior export."
+    ),
+)
+@click.option(
     "--json-out",
     is_flag=True,
     help="Print the cull result as JSON and exit (still writes --output if set).",
@@ -442,12 +460,14 @@ def cull_main(
     prompt: str | None,
     no_ai: bool,
     ai_workers: int,
+    ai_max_attempts: int | None,
     sharpness: float,
     min_long_edge: int,
     sort_mode: str,
     include_rejects: bool,
     resume: bool,
     manifest_path: Path | None,
+    overwrite: bool,
     json_out: bool,
 ) -> None:
     """Cull FOLDER down to the best --top N photos.
@@ -466,12 +486,19 @@ def cull_main(
     session_path = folder / ".photopicker-session.json"
 
     if resume and session_path.exists():
+        if _resume_ui(folder, session_path, port):
+            return
+        # Malformed / mismatched session — clear it and fall through to a
+        # fresh cull rather than bailing on the operator.
         click.echo(
-            f"Resuming from {session_path.name} (skipping cull pipeline)...",
+            f"Session file {session_path.name} was unusable; falling through "
+            "to a fresh cull.",
             err=True,
         )
-        _resume_ui(folder, session_path, port)
-        return
+        try:
+            session_path.unlink()
+        except OSError:
+            pass
 
     def _progress(stage: str, done: int, total: int) -> None:
         if done in (0, total):
@@ -494,8 +521,17 @@ def cull_main(
         except ImportError as exc:  # pragma: no cover — depends on install layout
             click.echo(f"Could not load vision module: {exc}", err=True)
             sys.exit(1)
+        def _on_retry(attempt: int, exc: BaseException, delay: float) -> None:
+            click.echo(
+                f"  vision retry: {type(exc).__name__} on attempt {attempt}; "
+                f"sleeping {delay:.1f}s",
+                err=True,
+            )
+
         try:
-            client = AnthropicVisionClient()
+            client = AnthropicVisionClient(
+                max_attempts=ai_max_attempts, on_retry=_on_retry
+            )
         except RuntimeError as exc:
             click.echo(f"AI rerank unavailable: {exc}", err=True)
             sys.exit(1)
@@ -538,20 +574,45 @@ def cull_main(
         click.echo(result.summary())
 
     if output is not None and (serve is None or serve is False):
-        output.mkdir(parents=True, exist_ok=True)
+        if output.exists() and not overwrite:
+            existing = [p for p in output.iterdir() if not p.name.startswith(".")]
+            if existing:
+                click.echo(
+                    f"Refusing to write into non-empty folder {output} "
+                    f"({len(existing)} entr{'y' if len(existing) == 1 else 'ies'} "
+                    "found). Pass --overwrite to allow.",
+                    err=True,
+                )
+                sys.exit(2)
+        try:
+            output.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            click.echo(f"Cannot create output folder {output}: {exc}", err=True)
+            sys.exit(2)
+        copied = 0
         for src in result.keepers:
-            copy_or_transcode(src, output, convert_heic=True)
-        click.echo(f"\nCopied {len(result.keepers)} keepers -> {output}", err=True)
+            try:
+                copy_or_transcode(src, output, convert_heic=True)
+                copied += 1
+            except OSError as exc:
+                click.echo(f"  copy failed for {src.name}: {exc}", err=True)
+        click.echo(f"\nCopied {copied}/{len(result.keepers)} keepers -> {output}", err=True)
+        if copied == 0 and result.keepers:
+            sys.exit(2)
 
     if manifest_path is not None:
-        _write_manifest(
-            manifest_path=manifest_path,
-            folder=folder,
-            top_n=top_n,
-            prompt=prompt or "",
-            result=result,
-            ai_scores=ai_scores,
-        )
+        try:
+            _write_manifest(
+                manifest_path=manifest_path,
+                folder=folder,
+                top_n=top_n,
+                prompt=prompt or "",
+                result=result,
+                ai_scores=ai_scores,
+            )
+        except OSError as exc:
+            click.echo(f"Cannot write manifest {manifest_path}: {exc}", err=True)
+            sys.exit(2)
         click.echo(f"Wrote manifest -> {manifest_path}", err=True)
 
     if serve is None:
@@ -626,24 +687,45 @@ def _write_manifest(
     manifest_path.write_text(json.dumps(payload, indent=2))
 
 
-def _resume_ui(folder: Path, session_path: Path, port: int) -> None:
+def _resume_ui(folder: Path, session_path: Path, port: int) -> bool:
     """Reopen a saved session without re-running the pipeline.
 
-    The session file already knows the keepers, their scores, and any prior
-    decisions. Rebuild the store from disk, boot the server.
+    Returns True when the UI ran to completion, False when the session file
+    was malformed / mismatched so the caller can drop through to a fresh cull
+    instead of hard-exiting.
     """
-    from .webui import Session, SessionStore
+    from .webui import Candidate, Session, SessionStore
     from .webui import serve as run_server
 
     try:
         raw = json.loads(session_path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        click.echo(f"Could not read session {session_path}: {exc}", err=True)
-        sys.exit(1)
+        click.echo(
+            f"Session file {session_path.name} was unreadable ({exc}).",
+            err=True,
+        )
+        return False
 
-    from .webui import Candidate
+    try:
+        candidates = [Candidate(**c) for c in raw.get("candidates", [])]
+    except TypeError as exc:
+        # Newer session file has fields older Candidate doesn't accept, or
+        # vice versa. Rather than crash, ignore it and let the caller cull fresh.
+        click.echo(
+            f"Session file {session_path.name} is from a different version "
+            f"({exc}).",
+            err=True,
+        )
+        return False
 
-    candidates = [Candidate(**c) for c in raw.get("candidates", [])]
+    if not candidates:
+        click.echo(f"Session file {session_path.name} is empty.", err=True)
+        return False
+
+    click.echo(
+        f"Resuming from {session_path.name} ({len(candidates)} candidates)...",
+        err=True,
+    )
     session = Session(
         source_folder=raw.get("source_folder", str(folder)),
         candidates=candidates,
@@ -658,6 +740,7 @@ def _resume_ui(folder: Path, session_path: Path, port: int) -> None:
     except OSError as exc:
         click.echo(f"Could not start server on port {port}: {exc}", err=True)
         sys.exit(1)
+    return True
 
 
 if __name__ == "__main__":

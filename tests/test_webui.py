@@ -511,6 +511,82 @@ def test_http_export_writes_manifest_when_flag_set(tmp_path: Path, running_serve
     assert len(manifest["picks"]) == 2
 
 
+def test_bind_with_fallback_uses_next_port_when_first_taken(tmp_path):
+    """If port N is bound, `_bind_with_fallback` should hand back N+1..N+tries."""
+    import socket
+
+    from photopicker.webui import _bind_with_fallback, make_handler
+
+    store, _ = _fresh_store(tmp_path, n=1)
+    from photopicker.webui import _ThumbCache
+    handler_cls = make_handler(store, _ThumbCache(), threading.Event())
+
+    # Grab a specific port so we know the fallback target.
+    base_port = _free_port()
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+    blocker.bind(("127.0.0.1", base_port))
+    blocker.listen(1)
+    try:
+        httpd, actual = _bind_with_fallback(handler_cls, "127.0.0.1", base_port, tries=5)
+        assert actual == base_port + 1
+        httpd.server_close()
+    finally:
+        blocker.close()
+
+
+def test_bind_with_fallback_raises_when_range_exhausted(tmp_path):
+    """When every port in the range is taken, we should raise OSError."""
+    import socket
+
+    from photopicker.webui import _bind_with_fallback, make_handler
+
+    store, _ = _fresh_store(tmp_path, n=1)
+    from photopicker.webui import _ThumbCache
+    handler_cls = make_handler(store, _ThumbCache(), threading.Event())
+
+    base_port = _free_port()
+    blockers = []
+    try:
+        for offset in range(4):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(("127.0.0.1", base_port + offset))
+            s.listen(1)
+            blockers.append(s)
+        with pytest.raises(OSError):
+            _bind_with_fallback(handler_cls, "127.0.0.1", base_port, tries=3)
+    finally:
+        for s in blockers:
+            s.close()
+
+
+def test_http_photo_on_corrupt_file_returns_500_with_filename(tmp_path: Path):
+    """A corrupt source file must produce a real error message, not a stack trace
+    that leaks into the operator's terminal or a bare 500."""
+    from photopicker.webui import (
+        Candidate,
+        Session,
+        SessionStore,
+    )
+
+    junk = tmp_path / "broken.jpg"
+    junk.write_bytes(b"not_an_image" * 8)
+    session = Session(
+        source_folder=str(tmp_path),
+        candidates=[Candidate(idx=0, path=str(junk), filename="broken.jpg")],
+    )
+    store = SessionStore(session=session, session_path=tmp_path / ".s.json")
+    port = _free_port()
+    _, shutdown = _start_server(store, port)
+    time.sleep(0.05)
+    try:
+        status, body, _ = _http_get(f"http://127.0.0.1:{port}/photo/0")
+        assert status == 500
+        assert b"broken.jpg" in body
+    finally:
+        shutdown.stop()  # type: ignore[attr-defined]
+
+
 def test_http_export_without_manifest_flag_skips(tmp_path: Path, running_server):
     base, _, _ = running_server
     _http_post(f"{base}/decision", {"idx": 0, "decision": "keep"})

@@ -7,7 +7,12 @@ import pytest
 from PIL import Image
 
 from photopicker.vision import (
+    VisionRetryError,
     VisionScore,
+    _backoff_delay,
+    _is_retryable,
+    _resolve_max_attempts,
+    call_with_retry,
     parse_vision_reply,
     rerank,
 )
@@ -184,6 +189,115 @@ def test_rerank_passes_prompt_to_client(tmp_path: Path):
     assert results[0].score == 75
     assert client.calls
     assert "deck portfolio hero shot" in client.calls[0][2]
+
+
+def test_call_with_retry_succeeds_first_try():
+    calls = []
+
+    def _fn():
+        calls.append(1)
+        return 42, "ok"
+
+    score, reason = call_with_retry(_fn, sleep=lambda _: None)
+    assert score == 42 and reason == "ok"
+    assert len(calls) == 1
+
+
+def test_call_with_retry_retries_transient_then_succeeds():
+    calls = []
+    sleeps = []
+    events = []
+
+    def _fn():
+        calls.append(1)
+        if len(calls) < 3:
+            raise TimeoutError("transient")
+        return 88, "ok now"
+
+    score, reason = call_with_retry(
+        _fn,
+        max_attempts=5,
+        sleep=lambda d: sleeps.append(d),
+        on_retry=lambda a, e, d: events.append((a, type(e).__name__, d)),
+    )
+    assert score == 88
+    assert len(calls) == 3
+    assert len(sleeps) == 2
+    assert all(e[1] == "TimeoutError" for e in events)
+
+
+def test_call_with_retry_gives_up_after_max_attempts():
+    def _fn():
+        raise ConnectionError("boom")
+
+    with pytest.raises(VisionRetryError) as exc_info:
+        call_with_retry(_fn, max_attempts=3, sleep=lambda _: None)
+    assert exc_info.value.attempts == 3
+    assert isinstance(exc_info.value.last_error, ConnectionError)
+
+
+def test_call_with_retry_does_not_retry_non_retryable():
+    calls = []
+
+    def _fn():
+        calls.append(1)
+        raise ValueError("bad input")
+
+    with pytest.raises(VisionRetryError):
+        call_with_retry(_fn, max_attempts=5, sleep=lambda _: None)
+    # ValueError is not retryable → only one attempt should have been made.
+    assert len(calls) == 1
+
+
+def test_call_with_retry_never_retries_keyboard_interrupt():
+    def _fn():
+        raise KeyboardInterrupt()
+
+    with pytest.raises(VisionRetryError):
+        call_with_retry(_fn, max_attempts=5, sleep=lambda _: None)
+
+
+def test_is_retryable_network_errors():
+    assert _is_retryable(TimeoutError("t"))
+    assert _is_retryable(ConnectionError("c"))
+    assert not _is_retryable(ValueError("v"))
+    assert not _is_retryable(KeyboardInterrupt())
+    assert not _is_retryable(SystemExit())
+
+
+def test_backoff_delay_grows_and_caps():
+    # No jitter for a deterministic assertion.
+    d0 = _backoff_delay(0, base=1.0, cap=10.0, jitter=0)
+    d1 = _backoff_delay(1, base=1.0, cap=10.0, jitter=0)
+    d2 = _backoff_delay(2, base=1.0, cap=10.0, jitter=0)
+    d_high = _backoff_delay(20, base=1.0, cap=10.0, jitter=0)
+    assert d0 == 1.0
+    assert d1 == 2.0
+    assert d2 == 4.0
+    assert d_high == 10.0  # capped
+
+
+def test_backoff_delay_jitter_within_range():
+    for _ in range(20):
+        d = _backoff_delay(3, base=1.0, cap=100.0, jitter=0.25)
+        assert 6.0 <= d <= 10.0  # 8 ± 25%
+
+
+def test_resolve_max_attempts_env_override(monkeypatch):
+    monkeypatch.setenv("PHOTOPICKER_VISION_MAX_ATTEMPTS", "7")
+    assert _resolve_max_attempts(None) == 7
+    # Explicit param wins over env.
+    assert _resolve_max_attempts(2) == 2
+
+
+def test_resolve_max_attempts_ignores_bad_env(monkeypatch):
+    monkeypatch.setenv("PHOTOPICKER_VISION_MAX_ATTEMPTS", "notint")
+    assert _resolve_max_attempts(None) == 3  # falls back to default
+
+
+def test_resolve_max_attempts_clamps_to_min_one():
+    assert _resolve_max_attempts(0) == 1
+    assert _resolve_max_attempts(-5) == 1
 
 
 def test_anthropic_vision_client_raises_when_sdk_missing(monkeypatch):
