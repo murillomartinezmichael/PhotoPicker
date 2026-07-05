@@ -1,0 +1,62 @@
+# =============================================================================
+# .gitleaks.toml — false-positive allowlist starter
+#
+# Drop this at the project root and rename to `.gitleaks.toml`. Every
+# allowlist entry MUST include a comment explaining WHY it's allowlisted
+# (per docs/ENGINEERING_STANDARDS.md § Secret scanning).
+#
+# Rules in this file EXTEND gitleaks' built-in rules. To disable a
+# specific built-in rule instead of allowlisting matches, comment the
+# rule out under [[rules]] rather than adding an allowlist entry.
+# =============================================================================
+
+# gitleaks respects the top-level `[allowlist]` and `[[rules]]` tables.
+# See https://github.com/gitleaks/gitleaks#configuration for full syntax.
+
+[allowlist]
+description = "Project-wide allowlist — every entry has a documented reason"
+
+# ─── Paths that are known to contain placeholders, not real credentials ─
+paths = [
+  # .env.example documents the shape of env vars — placeholder values only
+  '''\.env\.example$''',
+  # Documentation about how to configure the service — mentions var names
+  '''README\.md$''',
+  '''RUNBOOK\.md$''',
+  '''ONBOARDING\.md$''',
+  '''CLAUDE\.md$''',
+  # Test fixtures — expected to contain synthetic tokens
+  '''tests/.*fixture.*''',
+  '''tests/.*mock.*''',
+]
+
+# ─── Regexes for legitimate patterns that look like credentials ────────
+regexes = [
+  # os.environ.get("SOME_KEY") — this is READING a key, not defining one
+  '''os\.environ\.get\(['"]\w+['"]\)''',
+  '''os\.getenv\(['"]\w+['"]\)''',
+  '''process\.env\.\w+''',
+  # Environment.GetEnvironmentVariable in .NET
+  '''Environment\.GetEnvironmentVariable\(''',
+  # Placeholder patterns commonly used in docs
+  '''sk-ant-[A-Za-z0-9]*\.\.\.''',        # docs pattern: sk-ant-...
+  '''sk_(live|test)_[A-Z0-9\.]+\.\.\.''',   # Stripe docs pattern
+  '''ghp_[A-Za-z0-9]*\.\.\.''',            # GitHub token docs pattern
+  '''<your[-_](api[-_])?key[-_]here>''',    # <your-api-key-here>
+  '''YOUR_[A-Z_]+_HERE''',                 # YOUR_API_KEY_HERE style
+]
+
+# ─── Specific commits (use if a leak was rotated + you can't purge history) ─
+# commits = [
+#   "abc123def456...",  # Reason: leaked $ANTHROPIC_KEY rotated 2026-07-05,
+#                       # kept in history for audit trail
+# ]
+
+# ─── Specific stopwords ────────────────────────────────────────────────
+# Words that gitleaks might flag but are just words
+stopwords = [
+  "example",
+  "placeholder",
+  "sample",
+  "test",
+]
