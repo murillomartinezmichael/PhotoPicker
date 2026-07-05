@@ -17,11 +17,21 @@ Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI)
 
 ## Quick start — cull a shoot
 
+Two commands, no API key needed:
+
+```bash
+python demo/seed.py                       # 40 synthetic test photos, no camera roll needed
+photopicker-cull demo/shoot --top 10      # Opens the web UI at http://127.0.0.1:8765
+```
+
+Real-world use:
+
 ```bash
 # Point at a folder, get the 30 best in a local UI (offline; no API keys needed):
 photopicker-cull ~/photos/aries_shoot_2026-07-05 --top 30
 
-# Same, but rerank with Claude Vision on a prompt:
+# Same, but rerank with Claude Vision on a prompt (money code — retries with
+# exponential backoff on 429/network drops; see docs/DECISIONS.md § D-005):
 export ANTHROPIC_API_KEY=sk-ant-...
 pip install "photopicker[vision]"
 photopicker-cull ~/photos/aries_shoot_2026-07-05 --top 30 \
@@ -30,6 +40,12 @@ photopicker-cull ~/photos/aries_shoot_2026-07-05 --top 30 \
 # CLI-only, no UI, just copy the winners:
 photopicker-cull ~/photos/shoot --top 30 --output ~/galleries/aries/ --no-serve
 ```
+
+### Perf baseline
+
+500 photos → 30 keepers in **~9.5 s** offline. 1000 photos → **~18 s**. Vision
+rerank adds ~1.5 s per photo (parallelized 4-wide). Well under the 10-minute
+finish-line gate.  Run it yourself: `python scripts/perf_1k.py --n 1000 --top 30`.
 
 The UI:
 
@@ -49,6 +65,8 @@ The UI:
 | `--manifest PATH` | Write a JSON manifest of the cull (rank + score + capture_time + AI score) |
 | `--prompt "..."` | Rerank survivors via Claude Vision on this prompt |
 | `--no-ai` | Skip AI rerank even with `--prompt` |
+| `--ai-max-attempts N` | Retry each Vision call up to N times on rate limits / transient failures (env `PHOTOPICKER_VISION_MAX_ATTEMPTS`) |
+| `--overwrite / --no-overwrite` | Allow `--output` to write into a non-empty folder (default off — refuses to clobber) |
 | `--sort MODE` | Order keepers by `score` (default), `capture-time`, or `name` |
 | `--include-rejects` | Also surface pipeline rejects in the UI so you can rescue false positives |
 | `--resume` | Reopen the saved session in FOLDER without re-running the pipeline |

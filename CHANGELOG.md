@@ -7,6 +7,29 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-05
+
+**RUNG 1 HARDEN** — money-code retries, port fallback, malformed-session fallthrough, output-permission clean errors, corrupt-image safety, overwrite guard, plus a 1000-photo perf harness and a demo folder.
+
+### Added
+- `photopicker.vision.call_with_retry` — exponential-backoff wrapper (base 1s, cap 30s, ±25% jitter) that classifies transient failures (`RateLimitError`, `APIConnectionError`, timeouts, 5xx) vs terminal ones. `VisionRetryError` gives up cleanly after `max_attempts` (default 3, env `PHOTOPICKER_VISION_MAX_ATTEMPTS`, CLI `--ai-max-attempts`).
+- `photopicker.vision.AnthropicVisionClient` now wraps every `messages.create` in the retry loop and surfaces retry events via a callback that `photopicker-cull` prints to stderr.
+- CLI `--ai-max-attempts N` — retries per Vision call.
+- CLI `--overwrite / --no-overwrite` — default `off` refuses to write into a non-empty `--output` folder (dotfiles like `.DS_Store` are ignored when probing).
+- `photopicker.webui._bind_with_fallback` — if the configured `--port` is taken, try the next 10 ports before failing. Server prints "port X busy; landed on Y".
+- `photopicker.convert.ImageUnreadable` — raised by `thumbnail_bytes` / `vision_bytes` on decode failure. Web UI `/photo/<idx>` returns 500 with the filename in the body; Vision rerank skips + logs.
+- `scripts/perf_1k.py` — perf harness that seeds N synthetic photos and times the pipeline. Optional `--gate-seconds` for CI. **Baseline: 500 photos in 9.44s, 1000 in 17.74s** (see STATUS.md).
+- `demo/seed.py` + `demo/README.md` — 40-photo synthetic dataset a stranger can run in two commands with no API key.
+- New tests: 10 retry+backoff (`_backoff_delay` grow-and-cap + jitter, `_resolve_max_attempts` env override, `_is_retryable` classification, `call_with_retry` retries transient / gives up / doesn't retry KeyboardInterrupt), 2 port-fallback (uses N+1 when N taken, raises when range exhausted), 3 --resume fallthrough (malformed JSON, empty candidates, version drift), 3 permission-clean (output mkdir denied, manifest write denied, --ai-max-attempts wiring), 3 --overwrite (default refuses non-empty, --overwrite allows, dotfiles ignored), 5 convert hardening (junk file, missing file, zero byte, bad fmt still ValueError), 1 web UI corrupt-photo integration (returns 500 with filename in body). **9 new hardening tests bring the suite to 250/250 green, ruff-clean.**
+- STATUS.md + DECISIONS.md scaffolded per Ignition Prompt boot rules. D-005 documents the retry decision.
+
+### Changed
+- `photopicker-cull` `_resume_ui` returns bool instead of exiting; malformed/empty/version-drifted session files now fall through to a fresh cull with a one-line warning instead of `sys.exit(1)`.
+- `photopicker-cull --output DIR` write failures → `click.echo` + `sys.exit(2)` instead of stack trace.
+- `photopicker-cull --manifest PATH` write failures → same clean-error treatment.
+- README rewritten with the 2-command demo quickstart on top + perf baseline + full flag table incl. new options.
+- `pyproject.toml` v0.12.0 → v0.13.0.
+
 ## [0.12.0] - 2026-07-05
 
 Same-day follow-up to v0.11 — quality, UX, and completeness pass on the cull vertical.

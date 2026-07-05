@@ -164,7 +164,7 @@ def check_project(project_root: Path, only_files: list[Path] | None = None) -> i
         if exists_untracked:
             print(f"     ▶ FIX: git add {first_cand}", file=sys.stderr)
         else:
-            print(f"     ▶ FIX: the file doesn't exist locally either — check for typos or a rename", file=sys.stderr)
+            print("     ▶ FIX: the file doesn't exist locally either — check for typos or a rename", file=sys.stderr)
         print("", file=sys.stderr)
     return 1
 
