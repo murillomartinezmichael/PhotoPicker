@@ -13,25 +13,44 @@ STAGE_LABELS: dict[str, str] = {
     "after": "a fully finished outdoor deck or screened porch with furniture and finishing touches",
 }
 
+# Aesthetic bonus: photos with warm wood tones + natural light score higher.
+# Aries's brand is warm cedar / dusk / string lights, not cold overcast midday.
+WARMTH_LABEL = "a warm-toned wooden deck at golden hour with natural light and dusk sky"
+WARMTH_WEIGHT = 0.5  # boosts quality by up to 50% when warmth is 1.0
+
 OTHERS_COUNT = 6
 
 
-def select(paths: list[Path], classifier: Classifier) -> Selection:
-    label_list = list(STAGE_LABELS.values())
-    label_to_stage = {v: k for k, v in STAGE_LABELS.items()}
+def _combined(quality: float, warmth: float) -> float:
+    """Quality with a warmth bonus. Kept as a helper so tests can pin the math."""
+    return quality * (1.0 + WARMTH_WEIGHT * warmth)
 
-    all_probs = classify_batch(classifier, paths, label_list)
+
+def select(paths: list[Path], classifier: Classifier) -> Selection:
+    stage_label_list = list(STAGE_LABELS.values())
+    label_to_stage = {v: k for k, v in STAGE_LABELS.items()}
+    all_labels = stage_label_list + [WARMTH_LABEL]
+
+    all_probs = classify_batch(classifier, paths, all_labels)
     enriched: list[dict] = []
     for path in paths:
         probs = all_probs[path]
-        stage_probs = {label_to_stage[label]: prob for label, prob in probs.items()}
+        stage_probs = {
+            label_to_stage[label]: prob
+            for label, prob in probs.items()
+            if label in label_to_stage
+        }
         best_stage = max(stage_probs, key=lambda s: stage_probs[s])
+        warmth = probs.get(WARMTH_LABEL, 0.0)
+        quality = composite_score(path)
         enriched.append(
             {
                 "path": path,
                 "stage_probs": stage_probs,
                 "best_stage": best_stage,
-                "quality": composite_score(path),
+                "quality": quality,
+                "warmth": warmth,
+                "combined": _combined(quality, warmth),
             }
         )
 
@@ -43,12 +62,12 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
         candidates = primary or [d for d in enriched if d["path"] not in used]
         if not candidates:
             continue
-        winner = max(candidates, key=lambda d: (d["stage_probs"][stage], d["quality"]))
+        winner = max(candidates, key=lambda d: (d["stage_probs"][stage], d["combined"]))
         chosen[stage].append(winner["path"])
         used.add(winner["path"])
 
     remaining = [d for d in enriched if d["path"] not in used]
-    remaining.sort(key=lambda d: d["quality"], reverse=True)
+    remaining.sort(key=lambda d: d["combined"], reverse=True)
     chosen["others"] = [d["path"] for d in remaining[:OTHERS_COUNT]]
 
     return Selection(categorized=chosen)

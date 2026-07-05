@@ -439,7 +439,7 @@ def test_cli_dry_run_does_not_write_to_output(
     # No copies written.
     assert not out_dir.exists()
     # But the CLI describes what it would have done.
-    assert f"[dry-run] Would copy:" in result.output
+    assert "[dry-run] Would copy:" in result.output
     assert str(out_dir) in result.output
 
 

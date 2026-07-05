@@ -14,6 +14,7 @@ filenames leak zero useful info and can leak private context.
 """
 from __future__ import annotations
 
+import io
 import shutil
 from pathlib import Path
 
@@ -137,6 +138,66 @@ def to_webp(source: Path, dest: Path, quality: int = DEFAULT_WEBP_QUALITY) -> Pa
     with Image.open(source) as img:
         img.convert("RGB").save(dest, "WEBP", quality=quality, method=6)
     return dest
+
+
+DEFAULT_VISION_MAX_EDGE = 1568
+DEFAULT_VISION_QUALITY = 82
+
+
+def thumbnail_bytes(
+    source: Path,
+    width: int,
+    fmt: str = "jpg",
+    quality: int = DEFAULT_THUMBNAIL_QUALITY,
+) -> bytes:
+    """Return an in-memory width-scaled thumbnail. Used by the web UI grid.
+
+    Aspect ratio is preserved. Widths at or above the source width fall back
+    to the source resolution (no upscale — a browser can scale down for free).
+    """
+    if fmt not in _FORMAT_TO_EXT:
+        raise ValueError(f"Unknown fmt {fmt!r}. Choose from {sorted(_FORMAT_TO_EXT)}")
+    pil_fmt = _FORMAT_TO_PIL[fmt]
+    save_kwargs: dict[str, object] = {"quality": quality}
+    if pil_fmt == "JPEG":
+        save_kwargs["optimize"] = True
+    else:
+        save_kwargs["method"] = 6
+    with Image.open(source) as img:
+        rgb = img.convert("RGB")
+        original_w, original_h = rgb.size
+        if width >= original_w:
+            resized = rgb
+        else:
+            new_h = round(original_h * (width / original_w))
+            resized = rgb.resize((width, new_h), Image.LANCZOS)
+        buf = io.BytesIO()
+        resized.save(buf, pil_fmt, **save_kwargs)
+        return buf.getvalue()
+
+
+def vision_bytes(
+    source: Path,
+    max_edge: int = DEFAULT_VISION_MAX_EDGE,
+    quality: int = DEFAULT_VISION_QUALITY,
+) -> tuple[bytes, str]:
+    """Return `(jpeg_bytes, "image/jpeg")` scaled so the longer edge ≤ max_edge.
+
+    Claude Vision recommends ≤1568px on the long edge for the best token cost /
+    fidelity trade. HEIC inputs are transcoded on the way through. Always
+    returns JPEG so the media type is stable regardless of the source format.
+    """
+    with Image.open(source) as img:
+        rgb = img.convert("RGB")
+        w, h = rgb.size
+        long_edge = max(w, h)
+        if long_edge > max_edge:
+            scale = max_edge / long_edge
+            new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
+            rgb = rgb.resize(new_size, Image.LANCZOS)
+        buf = io.BytesIO()
+        rgb.save(buf, "JPEG", quality=quality, optimize=True)
+        return buf.getvalue(), "image/jpeg"
 
 
 def copy_or_transcode(

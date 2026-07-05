@@ -1,28 +1,75 @@
 # PhotoPicker
 
-ML-driven photo curator for project galleries. Point it at a folder, name a site profile, get back the curated lineup. Built so each of Michael's project sites (Aries Outdoor Living, Big7 Construction, etc.) gets a tight, themed gallery instead of an endless grid.
+ML-driven photo curator. Two verbs:
+
+- **`photopicker-cull ./shoot --top 30`** — dead-simple culling. Point at a raw shoot folder, get the 30 best keepers in a local web UI. K to keep, X to reject, arrows to navigate, Enter for full-size, one button to export. Optional `--prompt "..."` for Claude Vision rerank on taste; `--no-ai` stays fully offline.
+- **`photopicker --folder ./shoot --profile aries-gallery`** — themed curation. Site-specific profiles (aries / big7 / default / aries-gallery) produce categorized selections for portfolio galleries.
+
+Built so each of Michael's project sites (Aries Outdoor Living, Big7 Construction, etc.) gets a tight, themed gallery, and any 500-photo folder becomes a curated 30-shot lineup in under 10 minutes.
 
 ## Stack
 
-Python 3.12+++ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · CLIP via `transformers` (optional, for semantic labels)
+Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · stdlib `http.server` (web UI) · CLIP via `transformers` (optional themed labels) · Claude Vision via `anthropic` (optional composition rerank)
 
 ## Status
 
-**v1 implemented.** 132 unit tests · 94% coverage · ruff-clean · CI green on py3.10/3.11/3.12.
+**v0.12.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export. **222/222 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
+
+## Quick start — cull a shoot
+
+```bash
+# Point at a folder, get the 30 best in a local UI (offline; no API keys needed):
+photopicker-cull ~/photos/aries_shoot_2026-07-05 --top 30
+
+# Same, but rerank with Claude Vision on a prompt:
+export ANTHROPIC_API_KEY=sk-ant-...
+pip install "photopicker[vision]"
+photopicker-cull ~/photos/aries_shoot_2026-07-05 --top 30 \
+  --prompt "best deck photos for a portfolio"
+
+# CLI-only, no UI, just copy the winners:
+photopicker-cull ~/photos/shoot --top 30 --output ~/galleries/aries/ --no-serve
+```
+
+The UI:
+
+- Grid of survivors, monospace + LEDs (light on the eyes, no photo-review app fatigue)
+- **K** keep, **X** reject, **U** undo, **←/→** navigate, **Enter** full-size focus, **E** export, **?** help
+- Session state persists to `.photopicker-session.json` — Ctrl+C safe
+- Export button copies keepers into any folder you name; HEIC → JPG by default; originals untouched
+
+### Cull flags
+
+| Flag | Purpose |
+|---|---|
+| `--top N` | Number of keepers (default 30) |
+| `--serve / --no-serve` | Open the web UI (default on unless `--output` is set) |
+| `--port N` | Web UI port (default 8765) |
+| `--output DIR` | Copy keepers here without opening UI |
+| `--manifest PATH` | Write a JSON manifest of the cull (rank + score + capture_time + AI score) |
+| `--prompt "..."` | Rerank survivors via Claude Vision on this prompt |
+| `--no-ai` | Skip AI rerank even with `--prompt` |
+| `--sort MODE` | Order keepers by `score` (default), `capture-time`, or `name` |
+| `--include-rejects` | Also surface pipeline rejects in the UI so you can rescue false positives |
+| `--resume` | Reopen the saved session in FOLDER without re-running the pipeline |
+| `--sharpness N` | Reject frames below this Laplacian variance (default 60) |
+| `--min-long-edge N` | Reject frames whose longer edge is < N pixels (default 800) |
+| `--json-out` | Print the result as JSON instead of a summary |
 
 ## Install
 
 From the repo root:
 
 ```bash
-pip install -e .              # core only — StubClassifier, no CLIP
-pip install -e ".[clip]"      # add CLIP semantic labels (pulls torch + transformers)
+pip install -e .              # core (cull + profiles) — dep-light, no torch
+pip install -e ".[clip]"      # add CLIP semantic labels for themed profiles
+pip install -e ".[vision]"    # add Claude Vision rerank for `--prompt`
 pip install -e ".[dev]"       # pytest + coverage + ruff
 ```
 
-`build.sh` / `build.bat` will set this up from a clean clone.
+`build.sh` / `build.bat` set the core install up from a clean clone. `run.sh cull ./shoot` is the one-liner operator target.
 
-## Built-in profiles
+## Themed profiles (`photopicker` command)
 
 | Profile | What it picks |
 |---|---|

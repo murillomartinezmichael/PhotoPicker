@@ -1,3 +1,9 @@
+# Secrets — belt-and-braces; PhotoPicker has no runtime env vars today but
+# scripts/experiments sometimes drop a .env for one-off testing. Do not leak.
+.env
+.env.*
+!.env.example
+
 __pycache__/
 *.py[cod]
 .venv/

@@ -17,7 +17,14 @@ from .convert import (
     resolve_output_name,
     to_webp,
 )
-from .core import pick_photos
+from .core import discover_images, pick_photos
+from .culler import (
+    DEFAULT_MIN_LONG_EDGE,
+    DEFAULT_MIN_SHARPNESS,
+    DEFAULT_TOP_N,
+    SORT_MODES,
+    cull,
+)
 from .profiles import (
     ConfigError,
     build_from_config,
@@ -225,7 +232,7 @@ def main(
             note_bits.append("webp siblings")
         if rename_scheme != "original":
             note_bits.append(f"rename via {rename_scheme}")
-        click.echo(f"[dry-run] Would copy: " + ", ".join(note_bits))
+        click.echo("[dry-run] Would copy: " + ", ".join(note_bits))
     elif output:
         output.mkdir(parents=True, exist_ok=True)
         total_picks = len(result.selection.all_picked())
@@ -313,6 +320,344 @@ def main(
                 sort_keys=True,
             )
         click.echo(f"Wrote manifest to {manifest_path}")
+
+
+@click.command(name="photopicker-cull")
+@click.argument(
+    "folder",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+)
+@click.option(
+    "--top", "top_n",
+    type=click.IntRange(1, 5000),
+    default=DEFAULT_TOP_N,
+    show_default=True,
+    help="Number of keepers to surface.",
+)
+@click.option(
+    "--output", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Copy keepers here without opening the UI. Skipped when --serve is on."
+    ),
+)
+@click.option(
+    "--serve/--no-serve",
+    default=None,
+    help=(
+        "Open the local web UI to review + export. Defaults on unless "
+        "--output is set."
+    ),
+)
+@click.option(
+    "--port",
+    type=click.IntRange(1024, 65535),
+    default=8765,
+    show_default=True,
+    help="Port for the web UI.",
+)
+@click.option(
+    "--prompt",
+    type=str,
+    default=None,
+    help=(
+        "Optional: rerank keepers via Claude Vision against this prompt. "
+        "Example: 'best deck photos for a portfolio'. Requires "
+        "`pip install photopicker[vision]` and ANTHROPIC_API_KEY."
+    ),
+)
+@click.option(
+    "--no-ai",
+    is_flag=True,
+    help="Skip AI rerank even when --prompt is set. Offline core only.",
+)
+@click.option(
+    "--ai-workers",
+    type=click.IntRange(1, 16),
+    default=4,
+    show_default=True,
+    help="Parallel Claude Vision requests when reranking.",
+)
+@click.option(
+    "--sharpness",
+    type=float,
+    default=DEFAULT_MIN_SHARPNESS,
+    show_default=True,
+    help="Reject frames below this Laplacian-variance floor.",
+)
+@click.option(
+    "--min-long-edge",
+    type=int,
+    default=DEFAULT_MIN_LONG_EDGE,
+    show_default=True,
+    help="Reject frames whose longer edge is below this many pixels.",
+)
+@click.option(
+    "--sort",
+    "sort_mode",
+    type=click.Choice(SORT_MODES),
+    default="score",
+    show_default=True,
+    help="Order keepers by score (default), EXIF capture-time, or filename.",
+)
+@click.option(
+    "--include-rejects",
+    is_flag=True,
+    help=(
+        "Also surface pipeline rejects (blurry / near-dupes / too-small) in the "
+        "review UI so you can rescue false positives. Rejects are hidden by "
+        "default in the grid but a filter chip toggles them on."
+    ),
+)
+@click.option(
+    "--resume",
+    is_flag=True,
+    help=(
+        "If `.photopicker-session.json` already exists in FOLDER, skip the cull "
+        "pipeline and reopen that session. Fast when you Ctrl+C'd out mid-review."
+    ),
+)
+@click.option(
+    "--manifest",
+    "manifest_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Write a JSON manifest of the cull result (per-keeper rank + score + "
+        "capture time + optional AI score) to this path."
+    ),
+)
+@click.option(
+    "--json-out",
+    is_flag=True,
+    help="Print the cull result as JSON and exit (still writes --output if set).",
+)
+def cull_main(
+    folder: Path,
+    top_n: int,
+    output: Path | None,
+    serve: bool | None,
+    port: int,
+    prompt: str | None,
+    no_ai: bool,
+    ai_workers: int,
+    sharpness: float,
+    min_long_edge: int,
+    sort_mode: str,
+    include_rejects: bool,
+    resume: bool,
+    manifest_path: Path | None,
+    json_out: bool,
+) -> None:
+    """Cull FOLDER down to the best --top N photos.
+
+    Zero-config surface for the common case: point at a shoot, get keepers.
+    The offline pipeline (dedup + quality gate + composite score) handles the
+    technical pass; --prompt adds an optional Claude Vision rerank for taste.
+    Default UX opens a local web UI where you keep/reject with K/X and export
+    with one button.
+    """
+    paths = discover_images(folder)
+    if not paths:
+        click.echo(f"No supported images in {folder}", err=True)
+        sys.exit(1)
+
+    session_path = folder / ".photopicker-session.json"
+
+    if resume and session_path.exists():
+        click.echo(
+            f"Resuming from {session_path.name} (skipping cull pipeline)...",
+            err=True,
+        )
+        _resume_ui(folder, session_path, port)
+        return
+
+    def _progress(stage: str, done: int, total: int) -> None:
+        if done in (0, total):
+            click.echo(f"  {stage}: {done}/{total}", err=True)
+
+    click.echo(f"Culling {len(paths)} -> top {top_n}...", err=True)
+    result = cull(
+        paths,
+        top_n=top_n,
+        min_sharpness=sharpness,
+        min_long_edge=min_long_edge,
+        sort=sort_mode,
+        progress=_progress,
+    )
+
+    ai_scores: dict[Path, tuple[int, str]] = {}
+    if prompt and not no_ai:
+        try:
+            from .vision import AnthropicVisionClient, rerank
+        except ImportError as exc:  # pragma: no cover — depends on install layout
+            click.echo(f"Could not load vision module: {exc}", err=True)
+            sys.exit(1)
+        try:
+            client = AnthropicVisionClient()
+        except RuntimeError as exc:
+            click.echo(f"AI rerank unavailable: {exc}", err=True)
+            sys.exit(1)
+        click.echo(
+            f"Claude Vision rerank on {len(result.keepers)} keepers "
+            f"(prompt: {prompt!r})...",
+            err=True,
+        )
+
+        def _ai_progress(done: int, total: int) -> None:
+            if done in (0, total) or done % 10 == 0:
+                click.echo(f"  vision: {done}/{total}", err=True)
+
+        scores = rerank(
+            result.keepers,
+            prompt=prompt,
+            client=client,
+            max_workers=ai_workers,
+            progress=_ai_progress,
+        )
+        # Reorder keepers by AI score, keep quality score for tie-break stability.
+        ordered = [s.path for s in scores]
+        result.keepers = ordered
+        ai_scores = {s.path: (s.score, s.reason) for s in scores}
+
+    if json_out:
+        payload = {
+            "folder": str(folder),
+            "top": top_n,
+            "keepers": [str(p) for p in result.keepers],
+            "scores": {str(p): result.scores.get(p, 0.0) for p in result.keepers},
+            "ai_scores": {
+                str(p): {"score": s[0], "reason": s[1]}
+                for p, s in ai_scores.items()
+            },
+            "reject_counts": result.reject_counts(),
+        }
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        click.echo(result.summary())
+
+    if output is not None and (serve is None or serve is False):
+        output.mkdir(parents=True, exist_ok=True)
+        for src in result.keepers:
+            copy_or_transcode(src, output, convert_heic=True)
+        click.echo(f"\nCopied {len(result.keepers)} keepers -> {output}", err=True)
+
+    if manifest_path is not None:
+        _write_manifest(
+            manifest_path=manifest_path,
+            folder=folder,
+            top_n=top_n,
+            prompt=prompt or "",
+            result=result,
+            ai_scores=ai_scores,
+        )
+        click.echo(f"Wrote manifest -> {manifest_path}", err=True)
+
+    if serve is None:
+        serve = output is None
+
+    if serve:
+        # Deferred import so `photopicker-cull --help` stays snappy.
+        from .webui import SessionStore, build_session
+        from .webui import serve as run_server
+
+        rejected_map = result.rejected if include_rejects else None
+        session = build_session(
+            source_folder=folder,
+            keepers=result.keepers,
+            scores=result.scores,
+            reject_summary=result.reject_counts(),
+            input_count=result.total_input,
+            prompt=prompt or "",
+            ai_scores=ai_scores or None,
+            include_rejects=rejected_map,
+        )
+        store = SessionStore(session=session, session_path=session_path)
+        try:
+            run_server(store, port=port)
+        except OSError as exc:
+            click.echo(f"Could not start server on port {port}: {exc}", err=True)
+            sys.exit(1)
+
+
+def _write_manifest(
+    manifest_path: Path,
+    folder: Path,
+    top_n: int,
+    prompt: str,
+    result,
+    ai_scores: dict,
+) -> None:
+    """Emit a JSON manifest so consumers can build a static gallery downstream.
+
+    Fields per pick: rank, filename, path, score, ai_score/reason (when set),
+    capture_time (ISO or null).
+    """
+    from datetime import datetime, timezone
+
+    from .exif import get_capture_time
+
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    picks = []
+    for rank, path in enumerate(result.keepers, start=1):
+        capture = get_capture_time(path)
+        entry = {
+            "rank": rank,
+            "filename": path.name,
+            "path": str(path),
+            "score": round(result.scores.get(path, 0.0), 4),
+            "capture_time": capture.isoformat() if capture else None,
+        }
+        ai = ai_scores.get(path)
+        if ai is not None:
+            entry["ai_score"] = ai[0]
+            entry["ai_reason"] = ai[1]
+        picks.append(entry)
+    payload = {
+        "folder": str(folder),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "top": top_n,
+        "prompt": prompt,
+        "reject_counts": result.reject_counts(),
+        "input_count": result.total_input,
+        "picks": picks,
+    }
+    manifest_path.write_text(json.dumps(payload, indent=2))
+
+
+def _resume_ui(folder: Path, session_path: Path, port: int) -> None:
+    """Reopen a saved session without re-running the pipeline.
+
+    The session file already knows the keepers, their scores, and any prior
+    decisions. Rebuild the store from disk, boot the server.
+    """
+    from .webui import Session, SessionStore
+    from .webui import serve as run_server
+
+    try:
+        raw = json.loads(session_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        click.echo(f"Could not read session {session_path}: {exc}", err=True)
+        sys.exit(1)
+
+    from .webui import Candidate
+
+    candidates = [Candidate(**c) for c in raw.get("candidates", [])]
+    session = Session(
+        source_folder=raw.get("source_folder", str(folder)),
+        candidates=candidates,
+        prompt=raw.get("prompt", ""),
+        history=list(raw.get("history", [])),
+        reject_summary=dict(raw.get("reject_summary", {})),
+        input_count=int(raw.get("input_count", 0)),
+    )
+    store = SessionStore(session=session, session_path=session_path)
+    try:
+        run_server(store, port=port)
+    except OSError as exc:
+        click.echo(f"Could not start server on port {port}: {exc}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
