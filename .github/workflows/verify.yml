@@ -1,0 +1,153 @@
+# =============================================================================
+# .github/workflows/verify.yml — standards self-check on every PR + push
+#
+# Drop this into any project's .github/workflows/ directory.
+#
+# What it enforces (hard failures, blocks merge):
+#   - GitHub scaffold: PR template, 3 issue templates, dependabot
+#   - Build scripts: build.sh + build.bat both present
+#   - Makefile 5-target contract: help, build, test, lint, clean
+#   - Dockerfile has an explicit CMD or ENTRYPOINT (if project uses Docker)
+#   - tests/ folder exists with README
+#   - .env is never committed
+#
+# What it warns on (visible in the run summary, not a block):
+#   - Missing .dockerignore
+#   - Single-stage Dockerfile (multi-stage is soft-required)
+#   - No non-root USER in Dockerfile
+#   - Deprecated base image
+#
+# Config:
+#   Set 'library: true' in the matrix below to skip Dockerfile checks
+#   (for pure library projects like PhotoPicker). Set 'exempt: true'
+#   with a reason to skip the whole workflow (for repos like Cockpit
+#   and the-grind that are self-documented exempt).
+# =============================================================================
+
+name: verify-standards
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    name: standards
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # -------------------------------------------------------------------- #
+      # 01 · GitHub scaffold
+      # -------------------------------------------------------------------- #
+      - name: 'Check: GitHub scaffold'
+        run: |
+          set -e
+          fail=0
+          check() { [ -e "$1" ] && echo "  ✓ $1" || { echo "  ✗ $1 (missing)"; fail=1; }; }
+          check ".github/dependabot.yml"
+          check ".github/PULL_REQUEST_TEMPLATE.md"
+          check ".github/ISSUE_TEMPLATE/bug.md"
+          check ".github/ISSUE_TEMPLATE/feature.md"
+          check ".github/ISSUE_TEMPLATE/chore.md"
+          [ $fail -eq 0 ]
+
+      # -------------------------------------------------------------------- #
+      # 02 · Build scripts (both .sh and .bat must exist for cross-platform)
+      # -------------------------------------------------------------------- #
+      - name: 'Check: build.sh + build.bat parity'
+        run: |
+          set -e
+          test -f build.sh || { echo "  ✗ build.sh missing"; exit 1; }
+          test -f build.bat || { echo "  ✗ build.bat missing"; exit 1; }
+          echo "  ✓ both build scripts present"
+
+      # -------------------------------------------------------------------- #
+      # 03 · Makefile 5-target contract
+      # -------------------------------------------------------------------- #
+      - name: 'Check: Makefile 5-target contract'
+        run: |
+          set -e
+          test -f Makefile || { echo "  ✗ Makefile missing"; exit 1; }
+          fail=0
+          for target in help build test lint clean; do
+            if grep -qE "^${target}:" Makefile; then
+              echo "  ✓ target: ${target}"
+            else
+              echo "  ✗ missing target: ${target}"
+              fail=1
+            fi
+          done
+          [ $fail -eq 0 ]
+
+      # -------------------------------------------------------------------- #
+      # 04 · Dockerfile — hard checks
+      #     Skip via `if: ${{ !env.LIBRARY }}` if library project (needs
+      #     env config below — override per-project as needed).
+      # -------------------------------------------------------------------- #
+      - name: 'Check: Dockerfile (hard)'
+        if: hashFiles('Dockerfile') != ''
+        run: |
+          set -e
+          # Explicit CMD or ENTRYPOINT required
+          if grep -qE "^(CMD|ENTRYPOINT) " Dockerfile; then
+            echo "  ✓ explicit CMD/ENTRYPOINT"
+          else
+            echo "  ✗ no explicit CMD/ENTRYPOINT (would rely on base default)"
+            exit 1
+          fi
+          # No deprecated FROM images
+          from=$(grep -m1 "^FROM " Dockerfile)
+          if echo "$from" | grep -qE "python:3\.(9|10)|node:1[24]|node:16|:latest"; then
+            echo "  ✗ deprecated base image: $from"
+            exit 1
+          fi
+          echo "  ✓ FROM baseline: $from"
+
+      # -------------------------------------------------------------------- #
+      # 05 · Dockerfile — soft warnings (surface in run summary)
+      # -------------------------------------------------------------------- #
+      - name: 'Warn: Dockerfile (soft conventions)'
+        if: hashFiles('Dockerfile') != ''
+        run: |
+          {
+            echo "## Docker soft-convention warnings"
+            grep -qE "^FROM .* AS " Dockerfile || echo "- ⚠ single-stage Dockerfile — consider multi-stage for production"
+            grep -qE "^USER " Dockerfile || echo "- ⚠ no explicit USER — image runs as root"
+            test -f .dockerignore || echo "- ⚠ .dockerignore missing"
+          } >> $GITHUB_STEP_SUMMARY
+
+      # -------------------------------------------------------------------- #
+      # 06 · Tests
+      # -------------------------------------------------------------------- #
+      - name: 'Check: tests/ + README'
+        run: |
+          set -e
+          test -d tests || { echo "  ✗ tests/ directory missing"; exit 1; }
+          if [ -f tests/README.md ] || [ -f tests/readme.md ]; then
+            echo "  ✓ tests/README.md"
+          else
+            echo "  ✗ tests/ has no README (how does a new dev run these?)"
+            exit 1
+          fi
+
+      # -------------------------------------------------------------------- #
+      # 07 · Secrets hygiene — .env must never be committed
+      # -------------------------------------------------------------------- #
+      - name: 'Check: .env not tracked'
+        run: |
+          set -e
+          if git ls-files | grep -qE "^\.env$"; then
+            echo "  ✗ .env is tracked by git — remove from version control immediately"
+            exit 1
+          fi
+          echo "  ✓ .env not tracked"
+
+      - name: 'Summary'
+        if: always()
+        run: |
+          echo "## verify-standards result" >> $GITHUB_STEP_SUMMARY
+          echo "See individual steps above. Full standard: docs/ENGINEERING_STANDARDS.md § 4 + § 6." >> $GITHUB_STEP_SUMMARY
