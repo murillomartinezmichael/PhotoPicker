@@ -8,6 +8,19 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Big7 profile: `FINISHED_RESULT_LABEL` + `FINISHED_RESULT_WEIGHT` (0.15) — third
+  aesthetic bonus stacked additively on top of people + clean-lines. Rewards
+  shots that read as completed handover (clean surfaces, no debris, no
+  unfinished work) — Big7's marketing money shot for "here's what your home
+  will look like." Orthogonal to PEOPLE (occupancy) and CLEAN_LINES
+  (composition): a completed shot reads as trust regardless of who's in
+  frame or how tight the framing is. Weight is smaller than both existing
+  bonuses so PEOPLE (0.5) and CLEAN_LINES (0.3) still dominate direct
+  tiebreakers. `_combined` gains a `finished=0.0` default so external
+  callers stay source-compatible. 3 new tests: math (additive stacking +
+  back-compat), ranking (finished shot wins within a bucket vs debris),
+  ordering invariant (clean-lines shot still beats finished-only shot).
+  **279/279 tests green, ruff-clean.**
 - Aries profile: `GREENERY_LABEL` + `GREENERY_WEIGHT` (0.2) — second aesthetic
   bonus stacked additively on top of the warmth bonus. Rewards shots where the
   finished deck sits inside mature landscaping (plants, gardens, hedges) — the

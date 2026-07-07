@@ -25,18 +25,37 @@ PEOPLE_WEIGHT = 0.5  # boosts quality by up to 50% when people prob is 1.0
 CLEAN_LINES_LABEL = "a well-composed construction photo with clean straight lines square framing and level horizons"
 CLEAN_LINES_WEIGHT = 0.3
 
+# Aesthetic bonus: Big7 sells finished work — the "here is what your home
+# will look like after we're done" money shot. Photos that read as complete
+# (clean surfaces, no debris, no unfinished work) beat mid-repair shots for
+# marketing use. Orthogonal to PEOPLE (occupancy) and CLEAN_LINES (composition):
+# a completed handover reads as trust regardless of who's in frame. Small
+# weight so PEOPLE and CLEAN_LINES still dominate the direct tiebreaker.
+FINISHED_RESULT_LABEL = "a completed construction project with clean finished surfaces and no debris or unfinished work visible"
+FINISHED_RESULT_WEIGHT = 0.15
+
 PER_BUCKET = 6
 
 
-def _combined(quality: float, people: float, clean_lines: float = 0.0) -> float:
-    """Quality with people-on-site + clean-lines aesthetic bonuses stacked additively."""
-    return quality * (1.0 + PEOPLE_WEIGHT * people + CLEAN_LINES_WEIGHT * clean_lines)
+def _combined(
+    quality: float,
+    people: float,
+    clean_lines: float = 0.0,
+    finished: float = 0.0,
+) -> float:
+    """Quality with people + clean-lines + finished-result bonuses stacked additively."""
+    return quality * (
+        1.0
+        + PEOPLE_WEIGHT * people
+        + CLEAN_LINES_WEIGHT * clean_lines
+        + FINISHED_RESULT_WEIGHT * finished
+    )
 
 
 def select(paths: list[Path], classifier: Classifier) -> Selection:
     category_list = list(CATEGORY_LABELS.values())
     label_to_cat = {v: k for k, v in CATEGORY_LABELS.items()}
-    all_labels = category_list + [PEOPLE_LABEL, CLEAN_LINES_LABEL]
+    all_labels = category_list + [PEOPLE_LABEL, CLEAN_LINES_LABEL, FINISHED_RESULT_LABEL]
 
     all_probs = classify_batch(classifier, paths, all_labels)
     buckets: dict[str, list[tuple[Path, float]]] = {cat: [] for cat in CATEGORY_LABELS}
@@ -48,7 +67,8 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
         quality = composite_score(path)
         people = probs.get(PEOPLE_LABEL, 0.0)
         clean_lines = probs.get(CLEAN_LINES_LABEL, 0.0)
-        buckets[cat].append((path, _combined(quality, people, clean_lines)))
+        finished = probs.get(FINISHED_RESULT_LABEL, 0.0)
+        buckets[cat].append((path, _combined(quality, people, clean_lines, finished)))
 
     out: dict[str, list[Path]] = {}
     for cat, items in buckets.items():

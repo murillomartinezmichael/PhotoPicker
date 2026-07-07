@@ -21,6 +21,8 @@ from photopicker.profiles.big7 import CATEGORY_LABELS as BIG7_CATEGORY_LABELS
 from photopicker.profiles.big7 import (
     CLEAN_LINES_LABEL,
     CLEAN_LINES_WEIGHT,
+    FINISHED_RESULT_LABEL,
+    FINISHED_RESULT_WEIGHT,
     PEOPLE_LABEL,
     PEOPLE_WEIGHT,
 )
@@ -488,6 +490,89 @@ def test_big7_people_bonus_dominates_clean_lines(tmp_path: Path):
     )
     assert sel.categorized["repair"][1] == paths[1], (
         "clean-lines shot should place second, ahead of shots with neither signal"
+    )
+
+
+def test_big7_combined_stacks_finished_result_bonus_additively():
+    # Finished alone applies its own weight.
+    assert _big7_combined(quality=1.0, people=0.0, clean_lines=0.0, finished=1.0) == (
+        1.0 + FINISHED_RESULT_WEIGHT
+    )
+    # All three bonuses stack additively inside the multiplier.
+    expected = 1.0 * (1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT + FINISHED_RESULT_WEIGHT)
+    assert (
+        _big7_combined(quality=1.0, people=1.0, clean_lines=1.0, finished=1.0) == expected
+    )
+    # Finished defaults to 0 for callers that don't pass it (back-compat).
+    assert _big7_combined(quality=1.0, people=0.4, clean_lines=0.2) == _big7_combined(
+        quality=1.0, people=0.4, clean_lines=0.2, finished=0.0
+    )
+
+
+def test_big7_finished_result_bonus_ranks_completed_above_debris(tmp_path: Path):
+    """Between two equal-quality shots with no crew and no clean-lines signal,
+    the one reading as 'finished' outranks the mid-repair shot.
+
+    Locks the design intent that finished-result is a real signal, small but
+    non-zero — sales/marketing shots skew toward completed work.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    # All 4 land in "build"; paths[2] reads as finished, others don't.
+    # No people and no clean-lines in any shot so finished is the only differentiator.
+    scores = {}
+    for i, p in enumerate(paths):
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.0,
+            FINISHED_RESULT_LABEL: 0.9 if i == 2 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[2], (
+        "finished-result shot should outrank equal-quality mid-repair shots"
+    )
+
+
+def test_big7_clean_lines_dominates_finished_result(tmp_path: Path):
+    """Clean-lines outranks finished-result when they fire on different shots.
+
+    Locks the weight ordering: CLEAN_LINES (0.3) > FINISHED_RESULT (0.15).
+    If someone flips the weights, this fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    scores = {}
+    for i, p in enumerate(paths):
+        # paths[0]: clean lines, not finished
+        # paths[1]: finished, not clean lines
+        # others: neither
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.9 if i == 0 else 0.0,
+            FINISHED_RESULT_LABEL: 0.9 if i == 1 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[0], (
+        "clean-lines shot should outrank a finished-only shot"
+    )
+    assert sel.categorized["build"][1] == paths[1], (
+        "finished-result shot should place second, ahead of shots with neither signal"
     )
 
 
