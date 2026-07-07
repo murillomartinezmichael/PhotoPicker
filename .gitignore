@@ -20,3 +20,8 @@ build/
 .DS_Store
 .vscode/
 .idea/
+
+# Session ephemera (auto-improve tick state + fleet claims coordination)
+.autoimprove/
+.claims/
+SESSION_GOAL.md
