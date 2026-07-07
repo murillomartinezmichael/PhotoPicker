@@ -503,3 +503,37 @@ def test_cli_dry_run_json_output_still_prints_pick_payload(
     # JSON payload is still emitted (nothing about --output/manifest).
     assert '"profile": "default"' in result.output
     assert '"selection"' in result.output
+
+
+def test_cli_list_profiles_prints_names_and_exits():
+    from photopicker.profiles import list_profiles
+
+    runner = CliRunner()
+    result = runner.invoke(cli_module.main, ["--list-profiles"])
+    assert result.exit_code == 0, result.output
+    expected = list_profiles()
+    assert expected, "list_profiles() must return at least one built-in profile"
+    for name in expected:
+        assert name in result.output
+
+
+def test_cli_list_profiles_skips_folder_requirement():
+    # --folder is required=True; --list-profiles must short-circuit before that
+    # validation fires, so operators can discover profiles without a folder path.
+    runner = CliRunner()
+    result = runner.invoke(cli_module.main, ["--list-profiles"])
+    assert result.exit_code == 0
+    assert "Missing option" not in result.output
+    assert "Error" not in result.output
+
+
+def test_cli_list_profiles_ignores_other_flags():
+    # is_eager on --list-profiles means it fires before other options parse,
+    # so pairing it with a nonsense --profile still exits cleanly.
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        ["--list-profiles", "--profile", "does-not-exist"],
+    )
+    assert result.exit_code == 0
+    assert "does-not-exist" not in result.output.split("\n")[0]

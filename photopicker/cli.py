@@ -33,7 +33,23 @@ from .profiles import (
 )
 
 
+def _print_profiles_and_exit(ctx, _param, value):
+    if not value or ctx.resilient_parsing:
+        return
+    for name in list_profiles():
+        click.echo(name)
+    ctx.exit(0)
+
+
 @click.command()
+@click.option(
+    "--list-profiles",
+    is_flag=True,
+    is_eager=True,
+    expose_value=False,
+    callback=_print_profiles_and_exit,
+    help="Print available profile names one per line and exit. Skips --folder validation.",
+)
 @click.option(
     "--folder", "-f",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
