@@ -10,6 +10,9 @@ from photopicker.classifier import StubClassifier
 from photopicker.profiles import aries_gallery as aries_gallery_module
 from photopicker.profiles import get_profile, list_profiles
 from photopicker.profiles.aries import STAGE_LABELS, WARMTH_LABEL, WARMTH_WEIGHT, _combined
+from photopicker.profiles.big7 import CATEGORY_LABELS as BIG7_CATEGORY_LABELS
+from photopicker.profiles.big7 import PEOPLE_LABEL, PEOPLE_WEIGHT
+from photopicker.profiles.big7 import _combined as _big7_combined
 
 
 def _uniform_checker_folder(root: Path, count: int = 10) -> Path:
@@ -276,6 +279,42 @@ def test_big7_splits_into_repair_and_build(folder_of_images: Path):
     assert "build" in sel.categorized
     assert len(sel.categorized["repair"]) <= 6
     assert len(sel.categorized["build"]) <= 6
+
+
+def test_big7_combined_scales_quality_by_people_bonus():
+    # Baseline quality unchanged when no people detected.
+    assert _big7_combined(quality=1.0, people=0.0) == 1.0
+    # Full people prob applies the full PEOPLE_WEIGHT boost.
+    assert _big7_combined(quality=1.0, people=1.0) == 1.0 + PEOPLE_WEIGHT
+    # Boost is proportional to quality * people.
+    assert _big7_combined(quality=2.0, people=0.5) == 2.0 * (1.0 + 0.5 * PEOPLE_WEIGHT)
+
+
+def test_big7_people_bonus_ranks_workers_shot_above_empty_wall(tmp_path: Path):
+    """Within the same bucket, a photo with visible crew wins over an equal-quality empty shot.
+
+    Uses uniform-quality fixtures so the people bonus is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=6)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    # All 6 land in the "repair" bucket. paths[1] has crew in frame; others don't.
+    scores = {}
+    for i, p in enumerate(paths):
+        scores[p.name] = {
+            repair_label: 0.9,
+            build_label: 0.1,
+            PEOPLE_LABEL: 0.95 if i == 1 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["repair"][0] == paths[1], (
+        "shot with crew + tools should outrank equal-quality empty shot"
+    )
 
 
 def test_get_profile_unknown_raises():
