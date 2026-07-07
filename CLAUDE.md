@@ -51,3 +51,9 @@ pytest
 - `BRD.md`, `TRD.md` (public API name + scoring dir names are corrected here), `RUNBOOK.md`, `ONBOARDING.md`
 - `../docs/ENGINEERING_STANDARDS.md` + `../docs/TESTING_STANDARDS.md` — repo-wide bar
 - `../docs/BREVITY_STANDARDS.md` — less code beats more when readability holds
+
+---
+
+## End-of-chunk: log to Cockpit
+
+Every shipped chunk (feature end-to-end, doc rolled out, deploy that survives smoke test) gets a Work Log entry in `../COCKPIT.html` — press `l`. No entry = the chunk didn't happen. Full protocol in `../CLAUDE.md § DEFINITION OF DONE — Cockpit Work Log`.
