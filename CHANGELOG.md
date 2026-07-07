@@ -8,6 +8,17 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Aries profile: `GREENERY_LABEL` + `GREENERY_WEIGHT` (0.2) — second aesthetic
+  bonus stacked additively on top of the warmth bonus. Rewards shots where the
+  finished deck sits inside mature landscaping (plants, gardens, hedges) — the
+  "outdoor" in "outdoor living." Orthogonal to warmth: a midday shot with lush
+  planting still earns the bump. Weight is smaller than `WARMTH_WEIGHT` (0.5)
+  so golden-hour still wins direct tiebreakers within a stage slot. `_combined`
+  gains a `greenery=0.0` default so external callers stay source-compatible.
+  3 new tests: math (additive stacking + back-compat), ranking (planted deck
+  beats bare within the "after" stage), ordering invariant (warmth-only shot
+  still beats greenery-only within the same stage). **276/276 tests green,
+  ruff-clean.**
 - Big7 profile: `CLEAN_LINES_LABEL` + `CLEAN_LINES_WEIGHT` (0.3) — second aesthetic
   bonus stacked additively on top of the people bonus. Rewards shots that read as
   craftsmanship (straight framing, square corners, level horizons) — the trade's
