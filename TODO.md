@@ -30,9 +30,25 @@
 
 ## NEXT ACTION (60-second cold-open)
 
-**RUNG 7 ENVISION — propose (do not build unbidden) one connective step for the fleet.**
+**RUNG 7 ENVISION — CHOSEN.** Full proposal at
+`docs/PROPOSAL-siteguide-handoff.md` (2026-07-07 · fleet-all-day
+checkpoint 6). One-word answer wanted:
 
-Two candidates already drafted into CHANGELOG "Envisioned" for the man to bless:
+- **GO** → I build `photopicker/exports/siteguide.py` + `--export siteguide`
+  + `--client SLUG` flag + 5-8 unit tests + docs pass. Two 90-min
+  movements, zero new deps. Money path: Aries client-photo turnaround
+  collapses from an afternoon → 10 minutes; Big7 job-cadence photo
+  blocker becomes "shoot" instead of "shoot + wrangle."
+- **PARK** → PhotoPicker moves to Rung VIII RENEWAL and cycles back to
+  Rung I HARDEN. The other candidate (CockpitCloud fleet-preview panel)
+  stays parked as a nice-to-have.
+
+Rationale for choosing SiteGuide handoff over CockpitCloud preview: the
+handoff collapses an actual money path; the preview is a kanban polish
+that Mike can add later as a two-hour follow-up once the manifest.json
+this proposal already writes exists.
+
+## Rung VII ENVISION candidates (both drafted 2026-07-07)
 
 1. **CockpitCloud fleet-preview panel.** `photopicker-cull` writes each cull's `manifest.json` copy into `~/.cockpitcloud/photopicker/<date>.json`. Cockpit renders a "recent culls" widget showing folder + keeper count + prompt + estimated Vision cost. Ties PhotoPicker into the mission-control loop.
 2. **SiteGuide handoff format.** After a client cull, `--export siteguide` bundles keepers + manifest + client-facing README into a zip that drops straight into a Big7 / Aries site's `content/gallery/` Astro content collection — one command from raw shoot to deployable gallery.
