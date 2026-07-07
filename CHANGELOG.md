@@ -7,6 +7,12 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- CLI `--list-profiles` on `photopicker` — prints available profile names one per
+  line and exits. `is_eager` so it short-circuits the `--folder` required-gate,
+  which means `photopicker --list-profiles` works with no arguments (discovery
+  UX). 3 CliRunner tests lock the contract.
+
 ## [0.14.0] - 2026-07-05
 
 **RUNG 6 UPGRADE** — live cull progress in the web UI. 500+ photo folders no longer show a blank screen for 10+ seconds during the initial cull; the browser opens instantly onto a monospace progress screen that streams `scoring 45/500 → dedup 12/60 → quality-gate 60/60` from the server via SSE, then flips to the review grid the moment cull finishes.
