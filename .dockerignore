@@ -1,0 +1,43 @@
+# Keep the docker build context lean — matches .gitignore intent for the
+# subset that would otherwise bloat layer size or leak secrets into the image.
+
+# Secrets — never in the image.
+.env
+.env.*
+!.env.example
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Venvs — install fresh in the container
+.venv/
+venv/
+
+# Coverage + test output
+.coverage
+coverage.xml
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+
+# Git internals — Docker doesn't need them
+.git/
+.gitignore
+.gitattributes
+
+# Docs that don't ship in the image
+*.md
+!README.md
+docs/
