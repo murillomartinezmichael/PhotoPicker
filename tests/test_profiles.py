@@ -11,7 +11,12 @@ from photopicker.profiles import aries_gallery as aries_gallery_module
 from photopicker.profiles import get_profile, list_profiles
 from photopicker.profiles.aries import STAGE_LABELS, WARMTH_LABEL, WARMTH_WEIGHT, _combined
 from photopicker.profiles.big7 import CATEGORY_LABELS as BIG7_CATEGORY_LABELS
-from photopicker.profiles.big7 import PEOPLE_LABEL, PEOPLE_WEIGHT
+from photopicker.profiles.big7 import (
+    CLEAN_LINES_LABEL,
+    CLEAN_LINES_WEIGHT,
+    PEOPLE_LABEL,
+    PEOPLE_WEIGHT,
+)
 from photopicker.profiles.big7 import _combined as _big7_combined
 
 
@@ -290,6 +295,18 @@ def test_big7_combined_scales_quality_by_people_bonus():
     assert _big7_combined(quality=2.0, people=0.5) == 2.0 * (1.0 + 0.5 * PEOPLE_WEIGHT)
 
 
+def test_big7_combined_stacks_clean_lines_bonus_additively():
+    # Clean-lines alone applies its own weight.
+    assert _big7_combined(quality=1.0, people=0.0, clean_lines=1.0) == 1.0 + CLEAN_LINES_WEIGHT
+    # People + clean-lines stack additively inside the multiplier.
+    expected = 1.0 * (1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT)
+    assert _big7_combined(quality=1.0, people=1.0, clean_lines=1.0) == expected
+    # Clean-lines defaults to 0 for callers that don't pass it (back-compat).
+    assert _big7_combined(quality=1.0, people=0.4) == _big7_combined(
+        quality=1.0, people=0.4, clean_lines=0.0
+    )
+
+
 def test_big7_people_bonus_ranks_workers_shot_above_empty_wall(tmp_path: Path):
     """Within the same bucket, a photo with visible crew wins over an equal-quality empty shot.
 
@@ -314,6 +331,70 @@ def test_big7_people_bonus_ranks_workers_shot_above_empty_wall(tmp_path: Path):
 
     assert sel.categorized["repair"][0] == paths[1], (
         "shot with crew + tools should outrank equal-quality empty shot"
+    )
+
+
+def test_big7_clean_lines_bonus_ranks_symmetric_shot_above_cluttered(tmp_path: Path):
+    """Within the same bucket and equal quality, a clean-lines shot outranks a cluttered one.
+
+    Uses uniform-quality fixtures so clean-lines is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=6)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    # All 6 land in "build"; paths[3] reads as clean/square-framed, others don't.
+    # No people in any shot so the people bonus is zeroed out.
+    scores = {}
+    for i, p in enumerate(paths):
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.9 if i == 3 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[3], (
+        "clean-lines shot should outrank cluttered equal-quality shots"
+    )
+
+
+def test_big7_people_bonus_dominates_clean_lines(tmp_path: Path):
+    """People bonus outweighs clean lines when both fire on different shots.
+
+    Locks the design intent: crew-on-site is the primary signal, clean-lines
+    is a tiebreaker. If someone rebalances the weights and inverts this,
+    the test fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    scores = {}
+    for i, p in enumerate(paths):
+        # paths[0]: crew on site, no clean lines
+        # paths[1]: clean lines, no crew
+        # everyone else: neither
+        scores[p.name] = {
+            repair_label: 0.9,
+            build_label: 0.1,
+            PEOPLE_LABEL: 0.9 if i == 0 else 0.0,
+            CLEAN_LINES_LABEL: 0.9 if i == 1 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["repair"][0] == paths[0], (
+        "crew-on-site shot should still outrank a clean-lines-only shot"
+    )
+    assert sel.categorized["repair"][1] == paths[1], (
+        "clean-lines shot should place second, ahead of shots with neither signal"
     )
 
 

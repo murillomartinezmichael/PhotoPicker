@@ -13,6 +13,7 @@
 | 2026-07-05 | Cycle 1 complete | v0.12 shipped sharpest-per-cluster + filter chips + resume + manifest + EXIF preservation tests (222/222 green). |
 | 2026-07-05 | **RUNG 1 HARDEN** done | v0.13: Vision retry+backoff, port fallback, malformed-session fallthrough, output/manifest permission errors, --overwrite guard, ImageUnreadable + web-UI 500 with filename, perf harness (500→9.4s / 1000→17.7s), demo folder, 250/250 tests, ruff-clean. |
 | 2026-07-05 | **RUNG 6 UPGRADE** done | v0.14: `CullProgressBroker` + `/progress` JSON + `/progress/stream` SSE + `SessionStore.hydrate` + `--live-progress` CLI + browser-first flow + progress-screen frontend. Vision-fail hang bug caught in self-review + fixed (falls back to offline order). 265/265 tests green (15 new: 9 broker + 3 HTTP + 3 CLI), ruff-clean. |
+| 2026-07-06 | Rung 6 continued | Big7 profile: clean-lines aesthetic bonus (weight 0.3) stacked additively on top of the people bonus. Rewards straight-framing / level-horizon shots that read as construction craftsmanship. 3 new tests: math, ranking-within-bucket, ordering-invariant (people-only still beats clean-lines-only). **273/273 tests green (was 270), ruff-clean.** `photopicker/profiles/big7.py` at 100% coverage. |
 
 ## Live surface
 

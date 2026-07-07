@@ -8,6 +8,15 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Big7 profile: `CLEAN_LINES_LABEL` + `CLEAN_LINES_WEIGHT` (0.3) — second aesthetic
+  bonus stacked additively on top of the people bonus. Rewards shots that read as
+  craftsmanship (straight framing, square corners, level horizons) — the trade's
+  own precision aesthetic. Weight is smaller than PEOPLE_WEIGHT (0.5) so
+  crew-on-site still dominates; clean-lines is the tiebreaker. `_combined` gains
+  a `clean_lines=0.0` default so external callers stay source-compatible.
+  3 new tests: math (additive stacking + back-compat), ranking (clean-lines
+  wins within a bucket), ordering invariant (people-only shot still beats
+  clean-lines-only shot). **273/273 tests green, ruff-clean.**
 - CLI `--list-profiles` on `photopicker` — prints available profile names one per
   line and exits. `is_eager` so it short-circuits the `--folder` required-gate,
   which means `photopicker --list-profiles` works with no arguments (discovery
