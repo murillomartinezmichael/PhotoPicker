@@ -9,7 +9,14 @@ from PIL import Image
 from photopicker.classifier import StubClassifier
 from photopicker.profiles import aries_gallery as aries_gallery_module
 from photopicker.profiles import get_profile, list_profiles
-from photopicker.profiles.aries import STAGE_LABELS, WARMTH_LABEL, WARMTH_WEIGHT, _combined
+from photopicker.profiles.aries import (
+    GREENERY_LABEL,
+    GREENERY_WEIGHT,
+    STAGE_LABELS,
+    WARMTH_LABEL,
+    WARMTH_WEIGHT,
+    _combined,
+)
 from photopicker.profiles.big7 import CATEGORY_LABELS as BIG7_CATEGORY_LABELS
 from photopicker.profiles.big7 import (
     CLEAN_LINES_LABEL,
@@ -198,7 +205,7 @@ def test_aries_uses_classifier_with_correct_labels(folder_of_images: Path):
     classifier = StubClassifier()
     get_profile("aries").select(paths, classifier)
     assert len(classifier.calls) == len(paths)
-    expected = set(STAGE_LABELS.values()) | {WARMTH_LABEL}
+    expected = set(STAGE_LABELS.values()) | {WARMTH_LABEL, GREENERY_LABEL}
     for _, labels in classifier.calls:
         assert set(labels) == expected
 
@@ -258,6 +265,92 @@ def test_aries_warmth_boosts_others_ranking(tmp_path: Path):
     others = sel.categorized["others"]
     assert warmth_ranked[0] in others
     assert others.index(warmth_ranked[0]) < others.index(warmth_ranked[-1])
+
+
+def test_aries_combined_stacks_greenery_bonus_additively():
+    # Greenery alone applies its own weight.
+    assert _combined(quality=1.0, warmth=0.0, greenery=1.0) == 1.0 + GREENERY_WEIGHT
+    # Warmth + greenery stack additively inside the multiplier.
+    expected = 1.0 * (1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT)
+    assert _combined(quality=1.0, warmth=1.0, greenery=1.0) == expected
+    # Greenery defaults to 0 so pre-existing callers stay warmth-only (back-compat).
+    assert _combined(quality=1.0, warmth=0.4) == _combined(
+        quality=1.0, warmth=0.4, greenery=0.0
+    )
+
+
+def test_aries_greenery_bonus_ranks_planted_deck_above_bare(tmp_path: Path):
+    """Two 'after' shots, equal quality + equal warmth -> the greenery one wins.
+
+    Uses uniform-quality fixtures so greenery is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=10)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.95,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    assert sel.categorized["after"][0] == paths[1], (
+        "shot with lush landscaping should outrank equal-quality bare shot"
+    )
+
+
+def test_aries_warmth_dominates_greenery(tmp_path: Path):
+    """When warmth and greenery fire on different shots, warmth wins.
+
+    Locks the design intent: golden-hour is the primary aesthetic signal,
+    greenery is a secondary bonus. If someone rebalances the weights and
+    inverts this ordering, the test fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    # paths[0]: warmth only
+    # paths[1]: greenery only
+    # everyone else: neither
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.9,
+        GREENERY_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.9,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    # Only one photo lands in the "after" slot (aries picks 1/stage), so the
+    # warmth-only shot should claim it and the greenery shot flows to "others".
+    assert sel.categorized["after"][0] == paths[0], (
+        "warmth-only shot should outrank a greenery-only shot within the same stage"
+    )
+    assert paths[1] in sel.categorized["others"]
 
 
 def test_default_profile_returns_top_n(folder_of_images: Path):

@@ -18,18 +18,26 @@ STAGE_LABELS: dict[str, str] = {
 WARMTH_LABEL = "a warm-toned wooden deck at golden hour with natural light and dusk sky"
 WARMTH_WEIGHT = 0.5  # boosts quality by up to 50% when warmth is 1.0
 
+# Aesthetic bonus: Aries sells "outdoor living," not "wooden platform on dirt."
+# A finished deck framed by mature plants / gardens / hedges reads as the
+# integrated-with-nature lifestyle they market. Weighted below WARMTH so
+# golden-hour still dominates the direct tiebreaker — greenery is orthogonal
+# (a midday shot with lush landscaping still gets the bump).
+GREENERY_LABEL = "an outdoor deck surrounded by lush green plants gardens shrubs and mature landscaping"
+GREENERY_WEIGHT = 0.2
+
 OTHERS_COUNT = 6
 
 
-def _combined(quality: float, warmth: float) -> float:
-    """Quality with a warmth bonus. Kept as a helper so tests can pin the math."""
-    return quality * (1.0 + WARMTH_WEIGHT * warmth)
+def _combined(quality: float, warmth: float, greenery: float = 0.0) -> float:
+    """Quality with warmth + greenery bonuses stacked additively inside the multiplier."""
+    return quality * (1.0 + WARMTH_WEIGHT * warmth + GREENERY_WEIGHT * greenery)
 
 
 def select(paths: list[Path], classifier: Classifier) -> Selection:
     stage_label_list = list(STAGE_LABELS.values())
     label_to_stage = {v: k for k, v in STAGE_LABELS.items()}
-    all_labels = stage_label_list + [WARMTH_LABEL]
+    all_labels = stage_label_list + [WARMTH_LABEL, GREENERY_LABEL]
 
     all_probs = classify_batch(classifier, paths, all_labels)
     enriched: list[dict] = []
@@ -42,6 +50,7 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
         }
         best_stage = max(stage_probs, key=lambda s: stage_probs[s])
         warmth = probs.get(WARMTH_LABEL, 0.0)
+        greenery = probs.get(GREENERY_LABEL, 0.0)
         quality = composite_score(path)
         enriched.append(
             {
@@ -50,7 +59,8 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
                 "best_stage": best_stage,
                 "quality": quality,
                 "warmth": warmth,
-                "combined": _combined(quality, warmth),
+                "greenery": greenery,
+                "combined": _combined(quality, warmth, greenery),
             }
         )
 
