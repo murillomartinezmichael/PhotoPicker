@@ -34,6 +34,17 @@ CLEAN_LINES_WEIGHT = 0.3
 FINISHED_RESULT_LABEL = "a completed construction project with clean finished surfaces and no debris or unfinished work visible"
 FINISHED_RESULT_WEIGHT = 0.15
 
+# Aesthetic bonus: the residential-GC hero shot — a completed exterior from
+# the street showing the whole front elevation with driveway, entry, and
+# landscaping. This is the image prospects screenshot and send to their
+# spouse; it's the specific "curb appeal" money shot, not just any completion.
+# Orthogonal to FINISHED_RESULT (which fires for any completed room too);
+# hero-exterior narrows to the street-view sales frame. Small weight — this
+# stays a tiebreaker under FINISHED_RESULT so an interior handover shot with
+# people still beats a distant empty facade.
+HERO_EXTERIOR_LABEL = "the completed exterior front view of a house showing curb appeal driveway front door and landscaping from the street"
+HERO_EXTERIOR_WEIGHT = 0.1
+
 PER_BUCKET = 6
 
 
@@ -42,20 +53,27 @@ def _combined(
     people: float,
     clean_lines: float = 0.0,
     finished: float = 0.0,
+    hero: float = 0.0,
 ) -> float:
-    """Quality with people + clean-lines + finished-result bonuses stacked additively."""
+    """Quality with people + clean-lines + finished-result + hero-exterior bonuses stacked additively."""
     return quality * (
         1.0
         + PEOPLE_WEIGHT * people
         + CLEAN_LINES_WEIGHT * clean_lines
         + FINISHED_RESULT_WEIGHT * finished
+        + HERO_EXTERIOR_WEIGHT * hero
     )
 
 
 def select(paths: list[Path], classifier: Classifier) -> Selection:
     category_list = list(CATEGORY_LABELS.values())
     label_to_cat = {v: k for k, v in CATEGORY_LABELS.items()}
-    all_labels = category_list + [PEOPLE_LABEL, CLEAN_LINES_LABEL, FINISHED_RESULT_LABEL]
+    all_labels = category_list + [
+        PEOPLE_LABEL,
+        CLEAN_LINES_LABEL,
+        FINISHED_RESULT_LABEL,
+        HERO_EXTERIOR_LABEL,
+    ]
 
     all_probs = classify_batch(classifier, paths, all_labels)
     buckets: dict[str, list[tuple[Path, float]]] = {cat: [] for cat in CATEGORY_LABELS}
@@ -68,7 +86,8 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
         people = probs.get(PEOPLE_LABEL, 0.0)
         clean_lines = probs.get(CLEAN_LINES_LABEL, 0.0)
         finished = probs.get(FINISHED_RESULT_LABEL, 0.0)
-        buckets[cat].append((path, _combined(quality, people, clean_lines, finished)))
+        hero = probs.get(HERO_EXTERIOR_LABEL, 0.0)
+        buckets[cat].append((path, _combined(quality, people, clean_lines, finished, hero)))
 
     out: dict[str, list[Path]] = {}
     for cat, items in buckets.items():

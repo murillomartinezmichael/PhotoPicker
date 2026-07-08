@@ -25,6 +25,8 @@ from photopicker.profiles.big7 import (
     CLEAN_LINES_WEIGHT,
     FINISHED_RESULT_LABEL,
     FINISHED_RESULT_WEIGHT,
+    HERO_EXTERIOR_LABEL,
+    HERO_EXTERIOR_WEIGHT,
     PEOPLE_LABEL,
     PEOPLE_WEIGHT,
 )
@@ -601,6 +603,94 @@ def test_big7_combined_stacks_finished_result_bonus_additively():
     # Finished defaults to 0 for callers that don't pass it (back-compat).
     assert _big7_combined(quality=1.0, people=0.4, clean_lines=0.2) == _big7_combined(
         quality=1.0, people=0.4, clean_lines=0.2, finished=0.0
+    )
+
+
+def test_big7_combined_stacks_hero_exterior_bonus_additively():
+    # Hero alone applies its own weight.
+    assert _big7_combined(
+        quality=1.0, people=0.0, clean_lines=0.0, finished=0.0, hero=1.0
+    ) == (1.0 + HERO_EXTERIOR_WEIGHT)
+    # All four bonuses stack additively inside the multiplier.
+    expected = 1.0 * (
+        1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT + FINISHED_RESULT_WEIGHT + HERO_EXTERIOR_WEIGHT
+    )
+    assert (
+        _big7_combined(quality=1.0, people=1.0, clean_lines=1.0, finished=1.0, hero=1.0)
+        == expected
+    )
+    # Hero defaults to 0 for callers that don't pass it (back-compat).
+    assert _big7_combined(
+        quality=1.0, people=0.4, clean_lines=0.2, finished=0.1
+    ) == _big7_combined(quality=1.0, people=0.4, clean_lines=0.2, finished=0.1, hero=0.0)
+
+
+def test_big7_hero_exterior_bonus_ranks_above_baseline(tmp_path: Path):
+    """Between equal-quality shots with no other signal, the one reading as a
+    hero-exterior curb-appeal frame outranks the baseline shots.
+
+    Locks the design intent that hero-exterior is a real signal — the
+    residential-GC money shot is worth a small bump on its own.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    # All 4 land in "build"; paths[2] reads as hero-exterior, others don't.
+    # No people, no clean-lines, no finished — hero is the only differentiator.
+    scores = {}
+    for i, p in enumerate(paths):
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.0,
+            FINISHED_RESULT_LABEL: 0.0,
+            HERO_EXTERIOR_LABEL: 0.9 if i == 2 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[2], (
+        "hero-exterior shot should outrank equal-quality shots with no signal"
+    )
+
+
+def test_big7_finished_result_dominates_hero_exterior(tmp_path: Path):
+    """Finished-result outranks hero-exterior when they fire on different shots.
+
+    Locks the weight ordering: FINISHED_RESULT (0.15) > HERO_EXTERIOR (0.1).
+    If someone flips the weights, this fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    scores = {}
+    for i, p in enumerate(paths):
+        # paths[0]: finished, not hero
+        # paths[1]: hero, not finished
+        # others: neither
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.0,
+            FINISHED_RESULT_LABEL: 0.9 if i == 0 else 0.0,
+            HERO_EXTERIOR_LABEL: 0.9 if i == 1 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[0], (
+        "finished-result shot should outrank a hero-exterior-only shot"
+    )
+    assert sel.categorized["build"][1] == paths[1], (
+        "hero-exterior shot should place second, ahead of shots with neither signal"
     )
 
 

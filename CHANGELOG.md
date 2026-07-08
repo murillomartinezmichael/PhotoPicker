@@ -8,6 +8,19 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Big7 profile: `HERO_EXTERIOR_LABEL` + `HERO_EXTERIOR_WEIGHT` (0.1) — fourth
+  aesthetic bonus stacked additively on top of people + clean-lines +
+  finished-result. Rewards the residential-GC hero shot: completed exterior
+  from the street showing front elevation, driveway, entry, and landscaping —
+  the specific curb-appeal frame prospects screenshot. Orthogonal to
+  FINISHED_RESULT (which fires for any completed room too); hero-exterior
+  narrows to the street-view sales frame. Weight (0.1) is smallest of the
+  four so FINISHED_RESULT (0.15) still dominates the direct tiebreaker — an
+  interior handover shot beats a distant empty facade. `_combined` gains a
+  `hero=0.0` default so external callers stay source-compatible. 3 new tests:
+  math (additive stacking + back-compat), ranking (hero shot beats baseline
+  in the "build" bucket), ordering invariant (finished-only shot still beats
+  hero-only). **285/285 tests green, ruff-clean.**
 - Aries profile: `AMBIENT_LIGHTS_LABEL` + `AMBIENT_LIGHTS_WEIGHT` (0.15) — third
   aesthetic bonus stacked additively on top of warmth + greenery. Rewards
   after-dark money shots: string lights, lanterns, an illuminated deck at dusk
