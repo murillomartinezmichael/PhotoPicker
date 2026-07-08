@@ -10,6 +10,8 @@ from photopicker.classifier import StubClassifier
 from photopicker.profiles import aries_gallery as aries_gallery_module
 from photopicker.profiles import get_profile, list_profiles
 from photopicker.profiles.aries import (
+    AMBIENT_LIGHTS_LABEL,
+    AMBIENT_LIGHTS_WEIGHT,
     GREENERY_LABEL,
     GREENERY_WEIGHT,
     STAGE_LABELS,
@@ -207,7 +209,7 @@ def test_aries_uses_classifier_with_correct_labels(folder_of_images: Path):
     classifier = StubClassifier()
     get_profile("aries").select(paths, classifier)
     assert len(classifier.calls) == len(paths)
-    expected = set(STAGE_LABELS.values()) | {WARMTH_LABEL, GREENERY_LABEL}
+    expected = set(STAGE_LABELS.values()) | {WARMTH_LABEL, GREENERY_LABEL, AMBIENT_LIGHTS_LABEL}
     for _, labels in classifier.calls:
         assert set(labels) == expected
 
@@ -351,6 +353,99 @@ def test_aries_warmth_dominates_greenery(tmp_path: Path):
     # warmth-only shot should claim it and the greenery shot flows to "others".
     assert sel.categorized["after"][0] == paths[0], (
         "warmth-only shot should outrank a greenery-only shot within the same stage"
+    )
+    assert paths[1] in sel.categorized["others"]
+
+
+def test_aries_combined_stacks_ambient_bonus_additively():
+    # Ambient alone applies its own weight.
+    assert _combined(quality=1.0, warmth=0.0, greenery=0.0, ambient=1.0) == (
+        1.0 + AMBIENT_LIGHTS_WEIGHT
+    )
+    # All three bonuses stack additively inside the multiplier.
+    expected = 1.0 * (1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT)
+    assert _combined(quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0) == expected
+    # Ambient defaults to 0 for callers that don't pass it (back-compat).
+    assert _combined(quality=1.0, warmth=0.4, greenery=0.2) == _combined(
+        quality=1.0, warmth=0.4, greenery=0.2, ambient=0.0
+    )
+
+
+def test_aries_ambient_bonus_ranks_lit_evening_scene_above_bare(tmp_path: Path):
+    """Two 'after' shots, equal quality + no warmth + no greenery -> the string-lit one wins.
+
+    Uses uniform-quality fixtures so ambient lighting is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=10)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+        AMBIENT_LIGHTS_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+        AMBIENT_LIGHTS_LABEL: 0.95,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+            AMBIENT_LIGHTS_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    assert sel.categorized["after"][0] == paths[1], (
+        "string-lit evening shot should outrank equal-quality bare shot"
+    )
+
+
+def test_aries_greenery_dominates_ambient(tmp_path: Path):
+    """Greenery (0.2) outranks ambient (0.15) when they fire on different shots.
+
+    Locks the weight ordering: WARMTH > GREENERY > AMBIENT. If someone flips
+    ambient above greenery, this test fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    # paths[0]: greenery only
+    # paths[1]: ambient only
+    # others: neither
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.9,
+        AMBIENT_LIGHTS_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+        AMBIENT_LIGHTS_LABEL: 0.9,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+            AMBIENT_LIGHTS_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    # Only one photo lands in the "after" slot, so greenery shot claims it and
+    # the ambient shot flows to "others".
+    assert sel.categorized["after"][0] == paths[0], (
+        "greenery-only shot should outrank an ambient-only shot within the same stage"
     )
     assert paths[1] in sel.categorized["others"]
 

@@ -8,6 +8,18 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- Aries profile: `AMBIENT_LIGHTS_LABEL` + `AMBIENT_LIGHTS_WEIGHT` (0.15) — third
+  aesthetic bonus stacked additively on top of warmth + greenery. Rewards
+  after-dark money shots: string lights, lanterns, an illuminated deck at dusk
+  or night — the "we actually live out here" signal. Orthogonal to WARMTH
+  (golden-hour daylight) and GREENERY (plants): a night-lit shot picks up the
+  bonus even if the sky is dark and no landscaping is visible. Weight is smaller
+  than both existing bonuses so WARMTH (0.5) and GREENERY (0.2) still dominate
+  direct tiebreakers within a stage slot. `_combined` gains an `ambient=0.0`
+  default so external callers stay source-compatible. 3 new tests: math
+  (additive stacking + back-compat), ranking (lit shot beats bare within the
+  "after" stage), ordering invariant (greenery-only shot still beats
+  ambient-only within the same stage). **282/282 tests green, ruff-clean.**
 - Big7 profile: `FINISHED_RESULT_LABEL` + `FINISHED_RESULT_WEIGHT` (0.15) — third
   aesthetic bonus stacked additively on top of people + clean-lines. Rewards
   shots that read as completed handover (clean surfaces, no debris, no
