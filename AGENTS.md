@@ -1,6 +1,6 @@
-# CLAUDE.md — PhotoPicker
+# AGENTS.md — PhotoPicker
 
-Project-specific guidance for Claude Code sessions.
+Project-specific guidance for Codex sessions.
 
 ## What this is
 
@@ -56,15 +56,14 @@ pytest
 
 ## End-of-chunk: log to Cockpit
 
-Every shipped chunk (feature end-to-end, doc rolled out, deploy that survives smoke test) gets a Work Log entry in `../COCKPIT.html` — press `l`. No entry = the chunk didn't happen. Full protocol in `../CLAUDE.md § DEFINITION OF DONE — Cockpit Work Log`.
+Every shipped chunk (feature end-to-end, doc rolled out, deploy that survives smoke test) gets a Work Log entry in `../COCKPIT.html` — press `l`. No entry = the chunk didn't happen. Full protocol in `../AGENTS.md § DEFINITION OF DONE — Cockpit Work Log`.
 
 
 <!-- AI-HUB-SYNC:START -->
 ## Shared AI Hub
 
-Read ../AI_HUB.md after root ../CLAUDE.md and before changing this project. Product lane, UI verdict, and combine/separate decisions are centralized there so Claude and Codex stay synced.
+This project inherits ../AGENTS.md and the shared product brain at ../AI_HUB.md. Read local CLAUDE.md, TODO.md, and BRD.md before edits.
 
 Current lane: photo culling for client sites
-
 Current next action: Document best profile/use command for Big7 and Aries V2.
 <!-- AI-HUB-SYNC:END -->

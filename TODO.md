@@ -68,3 +68,23 @@ If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful brok
 ## QUESTIONS FOR MIKE
 
 _(none this session — every ambiguity was reversible and logged in DECISIONS.md)_
+
+
+<!-- AI-HUB-SYNC:START -->
+## AI Hub Sync - 2026-07-09
+
+Source of product truth: ..\AI_HUB.md.
+
+**Lane:** photo culling for client sites
+
+**UI/design verdict:** CLI/library is right. If a UI ever appears, it should be a contact-sheet review, not a full photo manager.
+
+**Product improvement:** Document profiles for Big7 and Aries V2, keep tests green, and integrate only at asset intake points.
+
+**Next action:**
+- [ ] Document best profile/use command for Big7 and Aries V2.
+
+**Combine/separate call:** Shared utility; prevent duplicate photo pickers.
+
+**Verification gate:** pytest; profile fixture tests; CI.
+<!-- AI-HUB-SYNC:END -->
