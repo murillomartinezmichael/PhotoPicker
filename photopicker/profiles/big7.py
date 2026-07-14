@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..classifier import Classifier, classify_batch
 from ..scoring import composite_score
-from .registry import Profile, Selection, register_profile
+from .registry import Profile, RuleBreakdown, Selection, register_profile
 
 CATEGORY_LABELS: dict[str, str] = {
     "repair": "an interior or exterior home repair or restoration job in progress or finished",
@@ -48,6 +48,27 @@ HERO_EXTERIOR_WEIGHT = 0.1
 PER_BUCKET = 6
 
 
+def _contributions(
+    quality: float,
+    people: float,
+    clean_lines: float = 0.0,
+    finished: float = 0.0,
+    hero: float = 0.0,
+) -> dict[str, float]:
+    """Score points each aesthetic rule adds on top of base quality.
+
+    This is what `--benchmark` prints. It decomposes `_combined` — the sum of
+    these plus `quality` equals the score the profile ranks with (to float
+    precision), so the table can't tell a different story than the ranking.
+    """
+    return {
+        "people": quality * PEOPLE_WEIGHT * people,
+        "clean-lines": quality * CLEAN_LINES_WEIGHT * clean_lines,
+        "finished-result": quality * FINISHED_RESULT_WEIGHT * finished,
+        "hero-exterior": quality * HERO_EXTERIOR_WEIGHT * hero,
+    }
+
+
 def _combined(
     quality: float,
     people: float,
@@ -77,6 +98,7 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
 
     all_probs = classify_batch(classifier, paths, all_labels)
     buckets: dict[str, list[tuple[Path, float]]] = {cat: [] for cat in CATEGORY_LABELS}
+    explain: dict[Path, RuleBreakdown] = {}
     for path in paths:
         probs = all_probs[path]
         cat_probs = {label: probs[label] for label in category_list}
@@ -87,13 +109,17 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
         clean_lines = probs.get(CLEAN_LINES_LABEL, 0.0)
         finished = probs.get(FINISHED_RESULT_LABEL, 0.0)
         hero = probs.get(HERO_EXTERIOR_LABEL, 0.0)
+        explain[path] = RuleBreakdown(
+            quality=quality,
+            contributions=_contributions(quality, people, clean_lines, finished, hero),
+        )
         buckets[cat].append((path, _combined(quality, people, clean_lines, finished, hero)))
 
     out: dict[str, list[Path]] = {}
     for cat, items in buckets.items():
         items.sort(key=lambda x: x[1], reverse=True)
         out[cat] = [p for p, _ in items[:PER_BUCKET]]
-    return Selection(categorized=out)
+    return Selection(categorized=out, explain=explain)
 
 
 register_profile(Profile(name="big7", select=select))

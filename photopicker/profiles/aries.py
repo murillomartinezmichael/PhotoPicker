@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ..classifier import Classifier, classify_batch
 from ..scoring import composite_score
-from .registry import Profile, Selection, register_profile
+from .registry import Profile, RuleBreakdown, Selection, register_profile
 
 STAGE_LABELS: dict[str, str] = {
     "before": "a bare backyard with no deck or outdoor structure built yet",
@@ -35,6 +35,25 @@ AMBIENT_LIGHTS_LABEL = "an outdoor deck at dusk or night illuminated by string l
 AMBIENT_LIGHTS_WEIGHT = 0.15
 
 OTHERS_COUNT = 6
+
+
+def _contributions(
+    quality: float,
+    warmth: float,
+    greenery: float = 0.0,
+    ambient: float = 0.0,
+) -> dict[str, float]:
+    """Score points each aesthetic rule adds on top of base quality.
+
+    This is what `--benchmark` prints. It decomposes `_combined` — the sum of
+    these plus `quality` equals the score the profile ranks with (to float
+    precision), so the table can't tell a different story than the ranking.
+    """
+    return {
+        "warmth": quality * WARMTH_WEIGHT * warmth,
+        "greenery": quality * GREENERY_WEIGHT * greenery,
+        "ambient-lights": quality * AMBIENT_LIGHTS_WEIGHT * ambient,
+    }
 
 
 def _combined(
@@ -100,7 +119,16 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
     remaining.sort(key=lambda d: d["combined"], reverse=True)
     chosen["others"] = [d["path"] for d in remaining[:OTHERS_COUNT]]
 
-    return Selection(categorized=chosen)
+    explain = {
+        d["path"]: RuleBreakdown(
+            quality=d["quality"],
+            contributions=_contributions(
+                d["quality"], d["warmth"], d["greenery"], d["ambient"]
+            ),
+        )
+        for d in enriched
+    }
+    return Selection(categorized=chosen, explain=explain)
 
 
 register_profile(Profile(name="aries", select=select))

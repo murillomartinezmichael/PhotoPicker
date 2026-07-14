@@ -33,6 +33,47 @@ from .profiles import (
 )
 
 
+def _share(value: float, total: float) -> str:
+    """Rule contribution as a share of the photo's total score.
+
+    A total of zero (black / unreadable frame scored 0.0) would divide by zero.
+    """
+    return f"{value / total * 100:5.1f}%" if total else "    -"
+
+
+def _benchmark_lines(result) -> list[str]:
+    """Render per-rule score contributions for every picked photo.
+
+    Answers "why did this photo win?" — the base quality score, then each
+    aesthetic rule's contribution in score points and as a share of the total.
+    Rules that fired at zero are still listed, so it's obvious which rules the
+    profile *considered* versus which ones actually moved the ranking.
+    """
+    explain = result.selection.explain
+    if not explain:
+        return [
+            "",
+            "== benchmark ==",
+            f"  Profile {result.profile!r} does not report per-rule contributions.",
+        ]
+
+    lines = ["", "== benchmark: score contributions =="]
+    for category, paths in result.selection.categorized.items():
+        for rank, path in enumerate(paths, start=1):
+            breakdown = explain.get(path)
+            if breakdown is None:
+                continue
+            total = breakdown.total
+            lines.append(f"{category} #{rank}  {path.name}  total {total:.3f}")
+            lines.append(
+                f"    quality           {breakdown.quality:7.3f}  "
+                f"{_share(breakdown.quality, total)}"
+            )
+            for rule, points in breakdown.contributions.items():
+                lines.append(f"    + {rule:<15} {points:+7.3f}  {_share(points, total)}")
+    return lines
+
+
 def _print_profiles_and_exit(ctx, _param, value):
     if not value or ctx.resilient_parsing:
         return
@@ -139,6 +180,15 @@ def _print_profiles_and_exit(ctx, _param, value):
 )
 @click.option("--json-out", is_flag=True, help="Print result as JSON.")
 @click.option(
+    "--benchmark",
+    is_flag=True,
+    help=(
+        "Show WHY each photo scored — base quality plus every profile rule's "
+        "contribution in score points. Use it to tune profile weights. Profiles "
+        "that report no breakdown (e.g. default) say so."
+    ),
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help=(
@@ -162,6 +212,7 @@ def main(
     webp: bool,
     webp_quality: int,
     json_out: bool,
+    benchmark: bool,
     dry_run: bool,
 ) -> None:
     """Pick the best photos from FOLDER using PROFILE."""
@@ -231,9 +282,22 @@ def main(
                 if paths
             },
         }
+        if benchmark:
+            picked = set(result.selection.all_picked())
+            payload["benchmark"] = {
+                str(path): {
+                    "quality": breakdown.quality,
+                    "contributions": breakdown.contributions,
+                    "total": breakdown.total,
+                }
+                for path, breakdown in result.selection.explain.items()
+                if path in picked
+            }
         click.echo(json.dumps(payload, indent=2))
     else:
         click.echo(result.summary())
+        if benchmark:
+            click.echo("\n".join(_benchmark_lines(result)))
 
     output_paths: dict[Path, Path] = {}
     thumbnail_paths: dict[Path, dict[int, Path]] = {}
