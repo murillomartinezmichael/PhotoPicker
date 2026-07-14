@@ -10,6 +10,7 @@ from PIL import Image
 from photopicker.classifier import StubClassifier
 from photopicker.profiles import aries_gallery as aries_gallery_module
 from photopicker.profiles import get_profile, list_profiles
+from photopicker.profiles.aesthetics import MAX_BONUS
 from photopicker.profiles.aries import (
     AMBIENT_LIGHTS_LABEL,
     AMBIENT_LIGHTS_WEIGHT,
@@ -372,10 +373,14 @@ def test_aries_combined_stacks_ambient_bonus_additively():
     assert _combined(quality=1.0, warmth=0.0, greenery=0.0, ambient=1.0) == (
         1.0 + AMBIENT_LIGHTS_WEIGHT
     )
-    # All three bonuses stack additively inside the multiplier.
-    expected = 1.0 * (1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT)
+    # Three bonuses at full probability earn 0.85x — over the ceiling, so the
+    # stack saturates there instead of running away with the ranking.
     assert _combined(quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0) == pytest.approx(
-        expected
+        1.0 + MAX_BONUS
+    )
+    # Below the ceiling they still stack plain-additively.
+    assert _combined(quality=1.0, warmth=0.5, greenery=0.5, ambient=0.5) == pytest.approx(
+        1.0 + 0.5 * (WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT)
     )
     # Ambient defaults to 0 for callers that don't pass it (back-compat).
     assert _combined(quality=1.0, warmth=0.4, greenery=0.2) == _combined(
@@ -465,13 +470,11 @@ def test_aries_greenery_dominates_ambient(tmp_path: Path):
 def test_aries_combined_stacks_furnished_bonus_additively():
     # Furnished alone applies its own weight.
     assert _combined(quality=1.0, warmth=0.0, furnished=1.0) == 1.0 + FURNISHED_WEIGHT
-    # All four bonuses stack additively inside the multiplier.
-    expected = 1.0 * (
-        1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT + FURNISHED_WEIGHT
-    )
+    # All four at once (0.97x earned) saturates at the ceiling — adding the
+    # furnished rule did not raise the top of the scale for the photos already there.
     assert _combined(
         quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0, furnished=1.0
-    ) == pytest.approx(expected)
+    ) == pytest.approx(1.0 + MAX_BONUS)
     # Furnished defaults to 0 for callers that don't pass it (back-compat).
     assert _combined(quality=1.0, warmth=0.4, ambient=0.2) == _combined(
         quality=1.0, warmth=0.4, ambient=0.2, furnished=0.0
@@ -574,9 +577,14 @@ def test_big7_combined_scales_quality_by_people_bonus():
 def test_big7_combined_stacks_clean_lines_bonus_additively():
     # Clean-lines alone applies its own weight.
     assert _big7_combined(quality=1.0, people=0.0, clean_lines=1.0) == 1.0 + CLEAN_LINES_WEIGHT
-    # People + clean-lines stack additively inside the multiplier.
-    expected = 1.0 * (1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT)
-    assert _big7_combined(quality=1.0, people=1.0, clean_lines=1.0) == expected
+    # People + clean-lines at full probability earn 0.8x — over the ceiling.
+    assert _big7_combined(quality=1.0, people=1.0, clean_lines=1.0) == pytest.approx(
+        1.0 + MAX_BONUS
+    )
+    # Below the ceiling they stack plain-additively.
+    assert _big7_combined(quality=1.0, people=0.5, clean_lines=0.5) == pytest.approx(
+        1.0 + 0.5 * (PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT)
+    )
     # Clean-lines defaults to 0 for callers that don't pass it (back-compat).
     assert _big7_combined(quality=1.0, people=0.4) == _big7_combined(
         quality=1.0, people=0.4, clean_lines=0.0
@@ -679,11 +687,10 @@ def test_big7_combined_stacks_finished_result_bonus_additively():
     assert _big7_combined(quality=1.0, people=0.0, clean_lines=0.0, finished=1.0) == (
         1.0 + FINISHED_RESULT_WEIGHT
     )
-    # All three bonuses stack additively inside the multiplier.
-    expected = 1.0 * (1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT + FINISHED_RESULT_WEIGHT)
+    # All three at full probability earn 0.95x — saturated at the ceiling.
     assert _big7_combined(
         quality=1.0, people=1.0, clean_lines=1.0, finished=1.0
-    ) == pytest.approx(expected)
+    ) == pytest.approx(1.0 + MAX_BONUS)
     # Finished defaults to 0 for callers that don't pass it (back-compat).
     assert _big7_combined(quality=1.0, people=0.4, clean_lines=0.2) == _big7_combined(
         quality=1.0, people=0.4, clean_lines=0.2, finished=0.0
@@ -695,14 +702,11 @@ def test_big7_combined_stacks_hero_exterior_bonus_additively():
     assert _big7_combined(
         quality=1.0, people=0.0, clean_lines=0.0, finished=0.0, hero=1.0
     ) == (1.0 + HERO_EXTERIOR_WEIGHT)
-    # All four bonuses stack additively inside the multiplier.
-    expected = 1.0 * (
-        1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT + FINISHED_RESULT_WEIGHT + HERO_EXTERIOR_WEIGHT
-    )
-    assert (
-        _big7_combined(quality=1.0, people=1.0, clean_lines=1.0, finished=1.0, hero=1.0)
-        == expected
-    )
+    # All four at once (1.05x earned) saturates — the hero rule sharpens the
+    # tiebreak between top photos without inflating what a top photo can score.
+    assert _big7_combined(
+        quality=1.0, people=1.0, clean_lines=1.0, finished=1.0, hero=1.0
+    ) == pytest.approx(1.0 + MAX_BONUS)
     # Hero defaults to 0 for callers that don't pass it (back-compat).
     assert _big7_combined(
         quality=1.0, people=0.4, clean_lines=0.2, finished=0.1

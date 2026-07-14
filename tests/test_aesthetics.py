@@ -3,12 +3,21 @@ from __future__ import annotations
 import pytest
 
 from photopicker.profiles import aries, big7
-from photopicker.profiles.aesthetics import AestheticRule, AestheticRules
+from photopicker.profiles.aesthetics import MAX_BONUS, AestheticRule, AestheticRules
 
 RULES = AestheticRules(
     [
         AestheticRule("warm", "a warm photo", 0.5),
         AestheticRule("green", "a green photo", 0.2),
+    ]
+)
+
+# Weights sum to 1.2 — over the 0.75 ceiling, so this stack saturates when it
+# fires hard. Mirrors what the shipped profiles do at full probability.
+GREEDY = AestheticRules(
+    [
+        AestheticRule("warm", "a warm photo", 0.8),
+        AestheticRule("green", "a green photo", 0.4),
     ]
 )
 
@@ -69,3 +78,53 @@ def test_stacked_weights_stay_within_the_documented_cap(profile, cap):
     # A photo that trips every rule must not run away with the ranking; this pins
     # the max multiplier so a future rule can't quietly double it.
     assert sum(r.weight for r in profile.RULES.rules) == pytest.approx(cap)
+
+
+def test_bonus_saturates_at_the_ceiling():
+    # 0.8 + 0.4 = 1.2x earned, but aesthetics may only lift a photo by MAX_BONUS.
+    assert GREEDY.combined(10.0, {"a warm photo": 1.0, "a green photo": 1.0}) == (
+        pytest.approx(10.0 * (1 + MAX_BONUS))
+    )
+
+
+def test_saturated_contributions_keep_their_relative_shares():
+    # Scaling is proportional: warm carries 2/3 of the earned bonus before the cap
+    # and still carries 2/3 of it after, so --benchmark keeps telling the truth
+    # about which rule did the work.
+    contrib = GREEDY.contributions(10.0, {"a warm photo": 1.0, "a green photo": 1.0})
+    assert contrib["warm"] == pytest.approx(10.0 * MAX_BONUS * (0.8 / 1.2))
+    assert contrib["green"] == pytest.approx(10.0 * MAX_BONUS * (0.4 / 1.2))
+    assert sum(contrib.values()) == pytest.approx(10.0 * MAX_BONUS)
+
+
+def test_breakdown_total_still_equals_the_ranking_score_when_saturated():
+    probs = {"a warm photo": 1.0, "a green photo": 1.0}
+    assert GREEDY.breakdown(9.0, probs).total == pytest.approx(GREEDY.combined(9.0, probs))
+
+
+def test_below_the_ceiling_nothing_is_scaled():
+    # 0.8 * 0.5 + 0.4 * 0.25 = 0.5 earned — under the cap, so full points stand.
+    contrib = GREEDY.contributions(10.0, {"a warm photo": 0.5, "a green photo": 0.25})
+    assert contrib == {"warm": pytest.approx(4.0), "green": pytest.approx(1.0)}
+
+
+def test_saturation_never_reorders_two_photos():
+    # The multiplier is min(earned, cap): monotone non-decreasing in earned bonus,
+    # so a photo that scores every rule higher can never fall below a weaker one.
+    weak = GREEDY.combined(10.0, {"a warm photo": 0.9, "a green photo": 0.9})
+    strong = GREEDY.combined(10.0, {"a warm photo": 1.0, "a green photo": 1.0})
+    assert strong >= weak
+
+
+def test_quality_still_outranks_aesthetics_alone():
+    # The point of the ceiling: a sharp photo with zero aesthetic signal beats a
+    # much softer one that trips every rule at full probability.
+    sharp_and_plain = GREEDY.combined(10.0, {})
+    soft_and_pretty = GREEDY.combined(5.0, {"a warm photo": 1.0, "a green photo": 1.0})
+    assert sharp_and_plain > soft_and_pretty
+
+
+@pytest.mark.parametrize("profile", [aries, big7], ids=["aries", "big7"])
+def test_shipped_profiles_cannot_exceed_the_ceiling(profile):
+    probs = {rule.label: 1.0 for rule in profile.RULES.rules}
+    assert profile.RULES.combined(8.0, probs) == pytest.approx(8.0 * (1 + MAX_BONUS))

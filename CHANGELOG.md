@@ -7,6 +7,17 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Aesthetic bonuses now **saturate** at `aesthetics.MAX_BONUS` (0.75): a photo
+  can gain at most 75% of its base quality from the rule stack, no matter how
+  many rules fire. Contributions are scaled down proportionally when the stack
+  runs over, so `--benchmark` still sums to the score the ranker used and still
+  shows which rule did the work. Fixes the drift where each new rule (aries is
+  now at 0.97 total weight, big7 at 1.05) raised the ceiling for everything
+  already at the top, letting aesthetics creep toward outweighing the
+  sharpness/exposure score they were only meant to tiebreak. Ranking stays
+  monotone — the multiplier is `min(earned, 0.75)`.
+
 ### Added
 - Big7 profile: `HERO_EXTERIOR_LABEL` + `HERO_EXTERIOR_WEIGHT` (0.1) — fourth
   aesthetic bonus stacked additively on top of people + clean-lines +
