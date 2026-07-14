@@ -1,6 +1,21 @@
 # PhotoPicker TODO
 
-## SHIPPED this session (2026-07-05, v0.14.0 — RUNG 6 UPGRADE)
+## SHIPPED this session (2026-07-13, auto-improve tick 5)
+
+- **`--weight NAME=VALUE`** — retunes any profile rule's weight for one run
+  (repeatable; `0` disables a rule). Rule names are the ones `--benchmark`
+  prints. Unknown name → hard error listing the known rules, never a silent
+  no-op. Weights were compile-time constants until now, so "this shoot has no
+  golden hour" meant editing `aries.py`.
+- `photopicker/profiles/aesthetics.py` — `set_weight_overrides()` /
+  `clear_weight_overrides()` / `known_rule_names()`; the rule stack reads the
+  override, so ranking *and* the `--benchmark` table move together and the
+  0.75x saturation ceiling still holds.
+- 14 new tests (`tests/test_weight_overrides.py`). **331/331 green, ruff-clean.**
+  Verified for real: `python -m photopicker.cli --folder demo/shoot -p aries
+  --dry-run --benchmark --weight warmth=0.9` and the typo path.
+
+## SHIPPED (2026-07-05, v0.14.0 — RUNG 6 UPGRADE)
 
 - `CullProgressBroker` — thread-safe pub/sub with monotonic serial, dedup on identical updates, condition-var wake, idempotent finish (9 unit tests).
 - `GET /progress` (JSON snapshot) + `GET /progress/stream` (SSE) endpoints on the web UI. 5-minute wall-clock cap. Handles browser-disconnect cleanly.
@@ -59,6 +74,11 @@ If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful brok
 
 ## PARKED (do not open in this session)
 
+- **`--weight` on a `--config` JSON profile is a no-op.** Config profiles don't
+  use the `AestheticRules` stack, so their weights aren't overridable. Either
+  give `config_profile.py` a rule stack, or warn when an override names no rule
+  the *selected* profile declares (today it only errors on names no profile at all
+  declares). Found in self-review of the `--weight` diff.
 - **Pillow 14 dedup deprecation** — `Image.Image.getdata` in `photopicker/dedup.py:30` needs migration to `get_flattened_data` before 2027-10-15.
 - **Web UI: multi-select drag** — hold Shift + click to select a range, K/X to bulk-decide. Nice but non-critical.
 - **Cost telemetry** — track per-run Vision spend (input tokens × price + output tokens × price) and display in the export result box.

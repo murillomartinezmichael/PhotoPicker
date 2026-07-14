@@ -107,9 +107,28 @@ photopicker --folder ./photos --profile default --json-out
 | Flag | Purpose |
 |---|---|
 | `--folder, -f` | Input folder (required) |
-| `--profile, -p` | One of `aries`, `big7`, `default` (required) |
+| `--profile, -p` | One of `aries`, `big7`, `aries-gallery`, `default` (required unless `--config`) |
+| `--config PATH` | Load a JSON profile config instead of a built-in profile |
 | `--output, -o` | If set, copies picks into subfolders by category |
+| `--benchmark` | Print WHY each photo won — base quality plus every rule's contribution |
+| `--weight NAME=VALUE` | Retune a rule's weight for this run (repeatable; `0` switches a rule off) |
+| `--dry-run` | Skip CLIP + skip writes — sanity-check the profile against a folder fast |
 | `--json-out` | Emit the selection as JSON instead of human summary |
+
+### Tuning a profile without editing it
+
+`--benchmark` names the rules (`warmth`, `greenery`, `ambient-lights`, `furnished` for
+aries; `people`, `clean-lines`, `finished-result`, `hero-exterior` for big7). Feed those
+names back in with `--weight` to bias a specific shoot:
+
+```bash
+# A deck shot at noon with no staging: lean on greenery, ignore the golden-hour rule.
+photopicker --folder ./shoot --profile aries --benchmark \
+  --weight warmth=0.1 --weight greenery=0.5 --weight furnished=0
+```
+
+Bonuses still saturate at 0.75x base quality, so no override can promote a soft frame
+over a sharp one. An unknown rule name is a hard error, not a silent no-op.
 
 ## Programmatic use
 
