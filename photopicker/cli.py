@@ -57,15 +57,17 @@ def _check_weights_apply(profile_name: str, weights: dict[str, float]) -> None:
     """Reject a `--weight` the *selected* profile can't honour.
 
     `set_weight_overrides` only knows the union of every rule name in the process,
-    so `--profile aries --weight crew=1` (a big7 rule) or any `--weight` on a
-    `--config` profile used to pass validation and then tune nothing — the run
-    looked retuned and wasn't. Scope the check to the profile actually running.
+    so `--profile aries --weight crew=1` (a big7 rule) or a `--weight` on a
+    `--config` profile that declares no rules used to pass validation and then tune
+    nothing — the run looked retuned and wasn't. Scope the check to the profile
+    actually running.
     """
     declared = get_profile(profile_name).rule_names
     if not declared:
         raise ValueError(
             f"profile {profile_name!r} has no tunable rules, so --weight would do "
-            "nothing. Rule weights exist on the 'aries' and 'big7' profiles."
+            "nothing. The 'aries' and 'big7' profiles ship rules; a --config "
+            "profile gets them from a 'rules' key."
         )
     unknown = sorted(set(weights) - declared)
     if unknown:

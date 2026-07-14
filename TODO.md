@@ -1,6 +1,24 @@
 # PhotoPicker TODO
 
-## SHIPPED this session (2026-07-13, auto-improve tick 6)
+## SHIPPED this session (2026-07-13, auto-improve tick 7)
+
+- **A `--config` JSON profile can now declare its own aesthetic rules.** New
+  optional `"rules": [{"name", "label", "weight"}]` key (plus `"max_bonus"`)
+  builds a real `AestheticRules` stack, so a config profile ranks on
+  quality × CLIP bonuses like `aries`/`big7` instead of bare quality — and its
+  rule names flow into `Profile.rule_names`, which means `--benchmark` prints
+  its contributions and `--weight NAME=VALUE` retunes them. Onboarding a new
+  site now needs zero Python. Clears the top PARKED item from tick 6.
+- Malformed rules fail loudly at build time (missing name/label, non-numeric or
+  negative weight, duplicate name, bad `max_bonus`) — never a silent no-op.
+  `--weight` on a config profile with *no* `rules` key still errors, now with a
+  message that points at the key.
+- 18 new tests (`tests/test_config_rules.py`), `config_profile.py` at 100%
+  coverage. **354/354 green, ruff-clean.** Verified end-to-end against
+  `demo/shoot`: benchmark table prints warmth/greenery contributions and the
+  `--weight warmth=0.9` override moves the numbers.
+
+## SHIPPED (2026-07-13, auto-improve tick 6)
 
 - **`--weight` is now scoped to the profile that actually runs.** It used to
   validate against the union of every rule name in the process, so
@@ -89,11 +107,6 @@ If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful brok
 
 ## PARKED (do not open in this session)
 
-- **Give `config_profile.py` a real rule stack.** Tick 6 made `--weight` on a
-  config profile a clean error instead of a silent no-op, but a JSON profile
-  still can't declare tunable aesthetic rules at all. Add an optional
-  `"rules": [{"name": ..., "label": ..., "weight": ...}]` config key that builds
-  an `AestheticRules` and hands its names to `Profile(rule_names=...)`.
 - **Flaky test: `test_bind_with_fallback_raises_when_range_exhausted`** — failed
   once in a full run on 2026-07-13, passed on rerun and in isolation. Port-bind
   race against whatever else holds the port; make it bind a real socket it owns
