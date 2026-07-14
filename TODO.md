@@ -1,6 +1,21 @@
 # PhotoPicker TODO
 
-## SHIPPED this session (2026-07-13, auto-improve tick 7)
+## SHIPPED this session (2026-07-14, auto-improve tick 8)
+
+- **A corrupt photo is now rejected as `unreadable`, not `duplicates`.**
+  `dedup_perceptual` caught the hash failure and *dropped* the path. Dedup runs
+  before the quality gate in `aries-gallery` and every config profile, so a
+  truncated/corrupt file never reached the gate that knows how to name it — it
+  landed in the caller's `duplicates` reject bucket under a reason that was
+  simply false, and a client asking "why was this cut?" got a wrong answer.
+  Unhashable photos now pass through to the gate.
+- **Pillow 14 deprecation cleared** (top PARKED item): `average_hash` reads
+  `Image.tobytes()` instead of the removed `Image.getdata()`. Same per-pixel
+  bytes for an `"L"` image, so hashes are unchanged.
+- 3 new tests (dedup pass-through ×2, config-profile end-to-end reject reason).
+  **357/357 green, ruff-clean.**
+
+## SHIPPED (2026-07-13, auto-improve tick 7)
 
 - **A `--config` JSON profile can now declare its own aesthetic rules.** New
   optional `"rules": [{"name", "label", "weight"}]` key (plus `"max_bonus"`)
@@ -114,7 +129,10 @@ If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful brok
 
 ## PARKED (do not open in this session)
 
-- **Pillow 14 dedup deprecation** — `Image.Image.getdata` in `photopicker/dedup.py:30` needs migration to `get_flattened_data` before 2027-10-15.
+- **Reject reasons aren't surfaced in the CLI.** The `Selection.rejected` map is
+  populated (and now honest — see tick 8) but only the manifest carries it. A
+  `--why-rejected` flag printing `name → reason` would close the loop for the
+  "why was my best shot cut?" question. ~40 lines + tests.
 - **Web UI: multi-select drag** — hold Shift + click to select a range, K/X to bulk-decide. Nice but non-critical.
 - **Cost telemetry** — track per-run Vision spend (input tokens × price + output tokens × price) and display in the export result box.
 - **iCloud shared photostream ingestion** — `photopicker-cull --icloud-album <name>` reads directly from the iCloud sync folder.
