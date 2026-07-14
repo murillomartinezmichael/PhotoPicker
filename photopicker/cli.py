@@ -28,6 +28,7 @@ from .culler import (
 from .profiles import (
     ConfigError,
     build_from_config,
+    get_profile,
     list_profiles,
     register_profile,
     set_weight_overrides,
@@ -50,6 +51,28 @@ def _parse_weights(pairs: tuple[str, ...]) -> dict[str, float]:
         except ValueError:
             raise ValueError(f"--weight value must be a number, got {raw!r}") from None
     return weights
+
+
+def _check_weights_apply(profile_name: str, weights: dict[str, float]) -> None:
+    """Reject a `--weight` the *selected* profile can't honour.
+
+    `set_weight_overrides` only knows the union of every rule name in the process,
+    so `--profile aries --weight crew=1` (a big7 rule) or any `--weight` on a
+    `--config` profile used to pass validation and then tune nothing — the run
+    looked retuned and wasn't. Scope the check to the profile actually running.
+    """
+    declared = get_profile(profile_name).rule_names
+    if not declared:
+        raise ValueError(
+            f"profile {profile_name!r} has no tunable rules, so --weight would do "
+            "nothing. Rule weights exist on the 'aries' and 'big7' profiles."
+        )
+    unknown = sorted(set(weights) - declared)
+    if unknown:
+        raise ValueError(
+            f"profile {profile_name!r} declares no rule(s) named: {', '.join(unknown)}. "
+            f"Its rules: {', '.join(sorted(declared))}"
+        )
 
 
 def _share(value: float, total: float) -> str:
@@ -273,7 +296,9 @@ def main(
 
     if weight_pairs:
         try:
-            set_weight_overrides(_parse_weights(weight_pairs))
+            weights = _parse_weights(weight_pairs)
+            _check_weights_apply(profile, weights)
+            set_weight_overrides(weights)
         except ValueError as exc:
             click.echo(f"Bad --weight: {exc}", err=True)
             sys.exit(1)

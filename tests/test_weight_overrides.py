@@ -9,6 +9,7 @@ than silently tuning nothing.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,7 @@ from click.testing import CliRunner
 from PIL import Image
 
 from photopicker.classifier import StubClassifier
-from photopicker.cli import _parse_weights, main
+from photopicker.cli import _check_weights_apply, _parse_weights, main
 from photopicker.profiles import (
     clear_weight_overrides,
     get_profile,
@@ -147,4 +148,65 @@ def test_cli_rejects_a_typo_instead_of_silently_ignoring_it(photos: Path):
         ],
     )
     assert result.exit_code == 1
-    assert "unknown rule name" in result.output
+    assert "declares no rule" in result.output
+    assert "warmth" in result.output, "the error names the rule the typo missed"
+
+
+# --- --weight is scoped to the profile that actually runs ---------------------
+
+
+def test_profile_declares_its_own_rule_names():
+    assert get_profile("aries").rule_names == {
+        "warmth", "greenery", "ambient-lights", "furnished",
+    }
+    assert "crew" not in get_profile("aries").rule_names
+    assert not get_profile("default").rule_names, "no rule stack, nothing to tune"
+
+
+def test_check_weights_rejects_a_rule_from_a_different_profile():
+    with pytest.raises(ValueError, match="declares no rule"):
+        _check_weights_apply("aries", {"warmth": 0.5, "clean-lines": 0.5})
+
+
+def test_check_weights_accepts_the_profiles_own_rules():
+    _check_weights_apply("aries", {"warmth": 0.5, "furnished": 0.0})  # no raise
+
+
+def test_cli_weight_from_another_profile_is_an_error_not_a_no_op(photos: Path):
+    """`--profile aries --weight clean-lines=1` passed the global check and tuned nothing."""
+    result = CliRunner().invoke(
+        main,
+        [
+            "--folder", str(photos),
+            "--profile", "aries",
+            "--dry-run",
+            "--weight", "clean-lines=0.9",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "declares no rule" in result.output
+    assert "warmth" in result.output, "the error lists the rules that DO exist"
+    assert weight_overrides() == {}, "a rejected override is never applied"
+
+
+def test_cli_weight_on_a_config_profile_is_an_error_not_a_no_op(
+    photos: Path, tmp_path: Path
+):
+    """Config profiles have no rule stack — `--weight` there was silently dead."""
+    cfg = tmp_path / "profile.json"
+    cfg.write_text(
+        json.dumps({"name": "backyard", "phases": {"after": "a finished backyard"}}),
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(
+        main,
+        [
+            "--folder", str(photos),
+            "--config", str(cfg),
+            "--dry-run",
+            "--weight", "warmth=0.9",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "no tunable rules" in result.output
+    assert weight_overrides() == {}

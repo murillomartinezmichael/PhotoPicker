@@ -1,6 +1,21 @@
 # PhotoPicker TODO
 
-## SHIPPED this session (2026-07-13, auto-improve tick 5)
+## SHIPPED this session (2026-07-13, auto-improve tick 6)
+
+- **`--weight` is now scoped to the profile that actually runs.** It used to
+  validate against the union of every rule name in the process, so
+  `--profile aries --weight clean-lines=1` (a big7 rule) and *any* `--weight` on
+  a `--config` profile passed validation and then tuned nothing — the run looked
+  retuned and wasn't. Clears the top PARKED item from tick 5's self-review.
+- `Profile.rule_names` (registry) + `AestheticRules.names` — a profile now
+  declares which rules it ranks with; `cli._check_weights_apply` rejects anything
+  else with the rules that *do* exist ("Its rules: ambient-lights, furnished,
+  greenery, warmth") or "profile 'backyard' has no tunable rules".
+- 5 new tests. **336/336 green, ruff-clean.** Verified for real against
+  `demo/shoot` on all three paths (own rule → runs, foreign rule → exit 1,
+  config profile → exit 1).
+
+## SHIPPED (2026-07-13, auto-improve tick 5)
 
 - **`--weight NAME=VALUE`** — retunes any profile rule's weight for one run
   (repeatable; `0` disables a rule). Rule names are the ones `--benchmark`
@@ -74,11 +89,15 @@ If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful brok
 
 ## PARKED (do not open in this session)
 
-- **`--weight` on a `--config` JSON profile is a no-op.** Config profiles don't
-  use the `AestheticRules` stack, so their weights aren't overridable. Either
-  give `config_profile.py` a rule stack, or warn when an override names no rule
-  the *selected* profile declares (today it only errors on names no profile at all
-  declares). Found in self-review of the `--weight` diff.
+- **Give `config_profile.py` a real rule stack.** Tick 6 made `--weight` on a
+  config profile a clean error instead of a silent no-op, but a JSON profile
+  still can't declare tunable aesthetic rules at all. Add an optional
+  `"rules": [{"name": ..., "label": ..., "weight": ...}]` config key that builds
+  an `AestheticRules` and hands its names to `Profile(rule_names=...)`.
+- **Flaky test: `test_bind_with_fallback_raises_when_range_exhausted`** — failed
+  once in a full run on 2026-07-13, passed on rerun and in isolation. Port-bind
+  race against whatever else holds the port; make it bind a real socket it owns
+  rather than assuming a range is free.
 - **Pillow 14 dedup deprecation** — `Image.Image.getdata` in `photopicker/dedup.py:30` needs migration to `get_flattened_data` before 2027-10-15.
 - **Web UI: multi-select drag** — hold Shift + click to select a range, K/X to bulk-decide. Nice but non-critical.
 - **Cost telemetry** — track per-run Vision spend (input tokens × price + output tokens × price) and display in the export result box.

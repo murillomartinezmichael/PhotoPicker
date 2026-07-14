@@ -54,6 +54,14 @@ class Selection:
 class Profile:
     name: str
     select: Callable[[list[Path], Classifier], Selection]
+    #: Names of the aesthetic rules this profile ranks with — the ones
+    #: `--benchmark` prints and `--weight NAME=VALUE` can retune. Plain strings
+    #: (not the rule objects) so the registry stays free of an import cycle with
+    #: `aesthetics`. A profile with no rule stack (`default`, `aries-gallery`, any
+    #: `--config` profile) leaves this empty, which is what lets the CLI say
+    #: "this profile has no tunable rules" instead of accepting a `--weight` that
+    #: would quietly do nothing.
+    rule_names: frozenset[str] = field(default_factory=frozenset)
 
 
 _REGISTRY: dict[str, Profile] = {}

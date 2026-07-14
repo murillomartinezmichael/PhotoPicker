@@ -124,4 +124,4 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
     return Selection(categorized=chosen, explain=explain)
 
 
-register_profile(Profile(name="aries", select=select))
+register_profile(Profile(name="aries", select=select, rule_names=RULES.names))

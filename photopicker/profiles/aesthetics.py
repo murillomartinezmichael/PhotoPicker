@@ -125,6 +125,11 @@ class AestheticRules:
         return list(self._rules)
 
     @property
+    def names(self) -> frozenset[str]:
+        """Rule names in this stack — hand to `Profile(rule_names=...)`."""
+        return frozenset(rule.name for rule in self._rules)
+
+    @property
     def labels(self) -> list[str]:
         """CLIP prompts to classify with — pass these to `classify_batch`."""
         return [rule.label for rule in self._rules]
