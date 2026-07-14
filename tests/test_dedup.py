@@ -82,6 +82,24 @@ def test_collapse_heic_jpg_twins_passes_non_ios_names(tmp_path):
     assert len(kept) == 2
 
 
+def test_dedup_perceptual_passes_through_unhashable(tmp_path):
+    # A corrupt file can't be hashed. It must survive dedup so the quality gate
+    # is the one that rejects it (reason "unreadable") — dropping it here made it
+    # look like a duplicate.
+    good = _write_gradient(tmp_path / "good.png", seed=0)
+    corrupt = tmp_path / "corrupt.jpg"
+    corrupt.write_bytes(b"not an image")
+
+    kept = dedup_perceptual([good, corrupt])
+    assert kept == [good, corrupt]
+
+
+def test_dedup_all_passes_through_unhashable(tmp_path):
+    corrupt = tmp_path / "corrupt.jpg"
+    corrupt.write_bytes(b"\xff\xd8truncated")
+    assert dedup_all([corrupt]) == [corrupt]
+
+
 def test_dedup_all_combines_twin_and_perceptual(tmp_path):
     # Two twin pairs (identical content in each pair)
     _write_gradient(tmp_path / "20250515_100000001_iOS.heic", seed=0)

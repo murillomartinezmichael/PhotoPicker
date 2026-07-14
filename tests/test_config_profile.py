@@ -82,6 +82,25 @@ def test_config_profile_reports_rejects(folder_of_distinct_large_images: Path):
     assert set(sel.rejected.keys()) == {"duplicates", "unreadable", "too_small", "blurry"}
 
 
+def test_config_profile_rejects_corrupt_file_as_unreadable(
+    folder_of_distinct_large_images: Path,
+):
+    # Dedup runs before the quality gate. A corrupt file has no perceptual hash,
+    # and dedup used to drop it — so it surfaced under "duplicates", which was a
+    # false reason. It belongs to the gate, which calls it what it is.
+    corrupt = folder_of_distinct_large_images / "corrupt.jpg"
+    corrupt.write_bytes(b"not an image")
+
+    cfg = {"name": "corrupt-test", "phases": {"a": "class a"}}
+    profile = build_from_config(cfg)
+    paths = sorted(folder_of_distinct_large_images.iterdir())
+    scores = {p.name: _phase_scores("a", cfg["phases"]) for p in paths}
+    sel = profile.select(paths, StubClassifier(scores=scores))
+
+    assert corrupt in sel.rejected["unreadable"]
+    assert corrupt not in sel.rejected["duplicates"]
+
+
 def test_config_profile_chronological_toggle_changes_output_order(
     folder_of_distinct_large_images: Path, monkeypatch
 ):
