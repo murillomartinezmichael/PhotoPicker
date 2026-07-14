@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..classifier import Classifier, classify_batch
 from ..scoring import composite_score
+from .aesthetics import AestheticRule, AestheticRules
 from .registry import Profile, RuleBreakdown, Selection, register_profile
 
 CATEGORY_LABELS: dict[str, str] = {
@@ -47,26 +48,16 @@ HERO_EXTERIOR_WEIGHT = 0.1
 
 PER_BUCKET = 6
 
-
-def _contributions(
-    quality: float,
-    people: float,
-    clean_lines: float = 0.0,
-    finished: float = 0.0,
-    hero: float = 0.0,
-) -> dict[str, float]:
-    """Score points each aesthetic rule adds on top of base quality.
-
-    This is what `--benchmark` prints. It decomposes `_combined` — the sum of
-    these plus `quality` equals the score the profile ranks with (to float
-    precision), so the table can't tell a different story than the ranking.
-    """
-    return {
-        "people": quality * PEOPLE_WEIGHT * people,
-        "clean-lines": quality * CLEAN_LINES_WEIGHT * clean_lines,
-        "finished-result": quality * FINISHED_RESULT_WEIGHT * finished,
-        "hero-exterior": quality * HERO_EXTERIOR_WEIGHT * hero,
-    }
+# The rule stack. Adding a bonus = one entry here; ranking and the `--benchmark`
+# table both read from it, so they cannot drift apart. See `aesthetics.py`.
+RULES = AestheticRules(
+    [
+        AestheticRule("people", PEOPLE_LABEL, PEOPLE_WEIGHT),
+        AestheticRule("clean-lines", CLEAN_LINES_LABEL, CLEAN_LINES_WEIGHT),
+        AestheticRule("finished-result", FINISHED_RESULT_LABEL, FINISHED_RESULT_WEIGHT),
+        AestheticRule("hero-exterior", HERO_EXTERIOR_LABEL, HERO_EXTERIOR_WEIGHT),
+    ]
+)
 
 
 def _combined(
@@ -76,25 +67,22 @@ def _combined(
     finished: float = 0.0,
     hero: float = 0.0,
 ) -> float:
-    """Quality with people + clean-lines + finished-result + hero-exterior bonuses stacked additively."""
-    return quality * (
-        1.0
-        + PEOPLE_WEIGHT * people
-        + CLEAN_LINES_WEIGHT * clean_lines
-        + FINISHED_RESULT_WEIGHT * finished
-        + HERO_EXTERIOR_WEIGHT * hero
+    """Quality with people + clean-lines + finished-result + hero-exterior bonuses stacked."""
+    return RULES.combined(
+        quality,
+        {
+            PEOPLE_LABEL: people,
+            CLEAN_LINES_LABEL: clean_lines,
+            FINISHED_RESULT_LABEL: finished,
+            HERO_EXTERIOR_LABEL: hero,
+        },
     )
 
 
 def select(paths: list[Path], classifier: Classifier) -> Selection:
     category_list = list(CATEGORY_LABELS.values())
     label_to_cat = {v: k for k, v in CATEGORY_LABELS.items()}
-    all_labels = category_list + [
-        PEOPLE_LABEL,
-        CLEAN_LINES_LABEL,
-        FINISHED_RESULT_LABEL,
-        HERO_EXTERIOR_LABEL,
-    ]
+    all_labels = category_list + RULES.labels
 
     all_probs = classify_batch(classifier, paths, all_labels)
     buckets: dict[str, list[tuple[Path, float]]] = {cat: [] for cat in CATEGORY_LABELS}
@@ -104,16 +92,9 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
         cat_probs = {label: probs[label] for label in category_list}
         best_label = max(cat_probs, key=lambda label: cat_probs[label])
         cat = label_to_cat[best_label]
-        quality = composite_score(path)
-        people = probs.get(PEOPLE_LABEL, 0.0)
-        clean_lines = probs.get(CLEAN_LINES_LABEL, 0.0)
-        finished = probs.get(FINISHED_RESULT_LABEL, 0.0)
-        hero = probs.get(HERO_EXTERIOR_LABEL, 0.0)
-        explain[path] = RuleBreakdown(
-            quality=quality,
-            contributions=_contributions(quality, people, clean_lines, finished, hero),
-        )
-        buckets[cat].append((path, _combined(quality, people, clean_lines, finished, hero)))
+        breakdown = RULES.breakdown(composite_score(path), probs)
+        explain[path] = breakdown
+        buckets[cat].append((path, breakdown.total))
 
     out: dict[str, list[Path]] = {}
     for cat, items in buckets.items():

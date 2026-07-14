@@ -5,7 +5,8 @@ from pathlib import Path
 
 from ..classifier import Classifier, classify_batch
 from ..scoring import composite_score
-from .registry import Profile, RuleBreakdown, Selection, register_profile
+from .aesthetics import AestheticRule, AestheticRules
+from .registry import Profile, Selection, register_profile
 
 STAGE_LABELS: dict[str, str] = {
     "before": "a bare backyard with no deck or outdoor structure built yet",
@@ -36,24 +37,15 @@ AMBIENT_LIGHTS_WEIGHT = 0.15
 
 OTHERS_COUNT = 6
 
-
-def _contributions(
-    quality: float,
-    warmth: float,
-    greenery: float = 0.0,
-    ambient: float = 0.0,
-) -> dict[str, float]:
-    """Score points each aesthetic rule adds on top of base quality.
-
-    This is what `--benchmark` prints. It decomposes `_combined` — the sum of
-    these plus `quality` equals the score the profile ranks with (to float
-    precision), so the table can't tell a different story than the ranking.
-    """
-    return {
-        "warmth": quality * WARMTH_WEIGHT * warmth,
-        "greenery": quality * GREENERY_WEIGHT * greenery,
-        "ambient-lights": quality * AMBIENT_LIGHTS_WEIGHT * ambient,
-    }
+# The rule stack. Adding a bonus = one entry here; ranking and the `--benchmark`
+# table both read from it, so they cannot drift apart. See `aesthetics.py`.
+RULES = AestheticRules(
+    [
+        AestheticRule("warmth", WARMTH_LABEL, WARMTH_WEIGHT),
+        AestheticRule("greenery", GREENERY_LABEL, GREENERY_WEIGHT),
+        AestheticRule("ambient-lights", AMBIENT_LIGHTS_LABEL, AMBIENT_LIGHTS_WEIGHT),
+    ]
+)
 
 
 def _combined(
@@ -62,19 +54,21 @@ def _combined(
     greenery: float = 0.0,
     ambient: float = 0.0,
 ) -> float:
-    """Quality with warmth + greenery + ambient bonuses stacked additively inside the multiplier."""
-    return quality * (
-        1.0
-        + WARMTH_WEIGHT * warmth
-        + GREENERY_WEIGHT * greenery
-        + AMBIENT_LIGHTS_WEIGHT * ambient
+    """Quality with warmth + greenery + ambient bonuses stacked additively."""
+    return RULES.combined(
+        quality,
+        {
+            WARMTH_LABEL: warmth,
+            GREENERY_LABEL: greenery,
+            AMBIENT_LIGHTS_LABEL: ambient,
+        },
     )
 
 
 def select(paths: list[Path], classifier: Classifier) -> Selection:
     stage_label_list = list(STAGE_LABELS.values())
     label_to_stage = {v: k for k, v in STAGE_LABELS.items()}
-    all_labels = stage_label_list + [WARMTH_LABEL, GREENERY_LABEL, AMBIENT_LIGHTS_LABEL]
+    all_labels = stage_label_list + RULES.labels
 
     all_probs = classify_batch(classifier, paths, all_labels)
     enriched: list[dict] = []
@@ -86,20 +80,15 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
             if label in label_to_stage
         }
         best_stage = max(stage_probs, key=lambda s: stage_probs[s])
-        warmth = probs.get(WARMTH_LABEL, 0.0)
-        greenery = probs.get(GREENERY_LABEL, 0.0)
-        ambient = probs.get(AMBIENT_LIGHTS_LABEL, 0.0)
         quality = composite_score(path)
+        breakdown = RULES.breakdown(quality, probs)
         enriched.append(
             {
                 "path": path,
                 "stage_probs": stage_probs,
                 "best_stage": best_stage,
-                "quality": quality,
-                "warmth": warmth,
-                "greenery": greenery,
-                "ambient": ambient,
-                "combined": _combined(quality, warmth, greenery, ambient),
+                "breakdown": breakdown,
+                "combined": breakdown.total,
             }
         )
 
@@ -119,15 +108,7 @@ def select(paths: list[Path], classifier: Classifier) -> Selection:
     remaining.sort(key=lambda d: d["combined"], reverse=True)
     chosen["others"] = [d["path"] for d in remaining[:OTHERS_COUNT]]
 
-    explain = {
-        d["path"]: RuleBreakdown(
-            quality=d["quality"],
-            contributions=_contributions(
-                d["quality"], d["warmth"], d["greenery"], d["ambient"]
-            ),
-        )
-        for d in enriched
-    }
+    explain = {d["path"]: d["breakdown"] for d in enriched}
     return Selection(categorized=chosen, explain=explain)
 
 

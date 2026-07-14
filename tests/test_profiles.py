@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from photopicker.classifier import StubClassifier
@@ -366,7 +367,9 @@ def test_aries_combined_stacks_ambient_bonus_additively():
     )
     # All three bonuses stack additively inside the multiplier.
     expected = 1.0 * (1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT)
-    assert _combined(quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0) == expected
+    assert _combined(quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0) == pytest.approx(
+        expected
+    )
     # Ambient defaults to 0 for callers that don't pass it (back-compat).
     assert _combined(quality=1.0, warmth=0.4, greenery=0.2) == _combined(
         quality=1.0, warmth=0.4, greenery=0.2, ambient=0.0
@@ -597,9 +600,9 @@ def test_big7_combined_stacks_finished_result_bonus_additively():
     )
     # All three bonuses stack additively inside the multiplier.
     expected = 1.0 * (1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT + FINISHED_RESULT_WEIGHT)
-    assert (
-        _big7_combined(quality=1.0, people=1.0, clean_lines=1.0, finished=1.0) == expected
-    )
+    assert _big7_combined(
+        quality=1.0, people=1.0, clean_lines=1.0, finished=1.0
+    ) == pytest.approx(expected)
     # Finished defaults to 0 for callers that don't pass it (back-compat).
     assert _big7_combined(quality=1.0, people=0.4, clean_lines=0.2) == _big7_combined(
         quality=1.0, people=0.4, clean_lines=0.2, finished=0.0
