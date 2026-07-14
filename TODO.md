@@ -17,6 +17,13 @@
   coverage. **354/354 green, ruff-clean.** Verified end-to-end against
   `demo/shoot`: benchmark table prints warmth/greenery contributions and the
   `--weight warmth=0.9` override moves the numbers.
+- **Flaky port test fixed** (2nd PARKED item cleared). Both
+  `_bind_with_fallback` tests bound one port and *assumed* the next few were
+  free — anything else on the box holding `base+2` failed the setup, not the
+  code. New `_reserve_ports(n)` helper binds a contiguous run the test actually
+  owns and retries elsewhere if the run is broken up. Also caught a real bug in
+  the old test: `tries=3` walks *four* ports (`range(tries + 1)`), so
+  "exhausted" now holds four. 6/6 clean reruns.
 
 ## SHIPPED (2026-07-13, auto-improve tick 6)
 
@@ -107,10 +114,6 @@ If neither: return to Rung 1 HARDEN (Ctrl+C during cull thread — graceful brok
 
 ## PARKED (do not open in this session)
 
-- **Flaky test: `test_bind_with_fallback_raises_when_range_exhausted`** — failed
-  once in a full run on 2026-07-13, passed on rerun and in isolation. Port-bind
-  race against whatever else holds the port; make it bind a real socket it owns
-  rather than assuming a range is free.
 - **Pillow 14 dedup deprecation** — `Image.Image.getdata` in `photopicker/dedup.py:30` needs migration to `get_flattened_data` before 2027-10-15.
 - **Web UI: multi-select drag** — hold Shift + click to select a range, K/X to bulk-decide. Nice but non-critical.
 - **Cost telemetry** — track per-run Vision spend (input tokens × price + output tokens × price) and display in the export result box.

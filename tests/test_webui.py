@@ -349,6 +349,37 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _reserve_ports(count: int, attempts: int = 20) -> tuple[int, list]:
+    """Bind `count` *consecutive* ports and return (base, sockets-you-must-close).
+
+    `_bind_with_fallback` walks port..port+tries-1, so a test about that walk needs
+    a contiguous run. Asking the OS for one free port and assuming the next few are
+    also free is what made these tests flaky — anything else on the box holding
+    base+2 blew up the setup, not the code under test. Here every port in the run is
+    one this test actually holds; if the run is broken up, drop it and try another.
+    """
+    import socket
+
+    for _ in range(attempts):
+        base = _free_port()
+        held = []
+        for offset in range(count):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                s.bind(("127.0.0.1", base + offset))
+                s.listen(1)
+            except OSError:
+                s.close()
+                break
+            held.append(s)
+        if len(held) == count:
+            return base, held
+        for s in held:
+            s.close()
+    # pragma: no cover — only when the box is unusually busy
+    pytest.skip(f"could not reserve {count} consecutive ports after {attempts} tries")
+
+
 @pytest.fixture
 def running_server(tmp_path: Path):
     store, paths = _fresh_store(tmp_path, n=4)
@@ -513,46 +544,36 @@ def test_http_export_writes_manifest_when_flag_set(tmp_path: Path, running_serve
 
 def test_bind_with_fallback_uses_next_port_when_first_taken(tmp_path):
     """If port N is bound, `_bind_with_fallback` should hand back N+1..N+tries."""
-    import socket
-
     from photopicker.webui import _bind_with_fallback, make_handler
 
     store, _ = _fresh_store(tmp_path, n=1)
     from photopicker.webui import _ThumbCache
     handler_cls = make_handler(store, _ThumbCache(), threading.Event())
 
-    # Grab a specific port so we know the fallback target.
-    base_port = _free_port()
-    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-    blocker.bind(("127.0.0.1", base_port))
-    blocker.listen(1)
+    # Hold both ports, then free N+1 — so the fallback target is one this test just
+    # proved it can bind, rather than one we hoped was free.
+    base_port, blockers = _reserve_ports(2)
+    blockers.pop().close()
     try:
         httpd, actual = _bind_with_fallback(handler_cls, "127.0.0.1", base_port, tries=5)
         assert actual == base_port + 1
         httpd.server_close()
     finally:
-        blocker.close()
+        for s in blockers:
+            s.close()
 
 
 def test_bind_with_fallback_raises_when_range_exhausted(tmp_path):
     """When every port in the range is taken, we should raise OSError."""
-    import socket
-
     from photopicker.webui import _bind_with_fallback, make_handler
 
     store, _ = _fresh_store(tmp_path, n=1)
     from photopicker.webui import _ThumbCache
     handler_cls = make_handler(store, _ThumbCache(), threading.Event())
 
-    base_port = _free_port()
-    blockers = []
+    # `tries=3` walks port..port+3 — four ports, so hold four.
+    base_port, blockers = _reserve_ports(4)
     try:
-        for offset in range(4):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.bind(("127.0.0.1", base_port + offset))
-            s.listen(1)
-            blockers.append(s)
         with pytest.raises(OSError):
             _bind_with_fallback(handler_cls, "127.0.0.1", base_port, tries=3)
     finally:
