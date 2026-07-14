@@ -72,7 +72,12 @@ def test_aries_explains_every_photo_it_scored(photos: Path):
 
     assert set(sel.explain) == set(paths), "every scored photo gets a breakdown"
     for breakdown in sel.explain.values():
-        assert set(breakdown.contributions) == {"warmth", "greenery", "ambient-lights"}
+        assert set(breakdown.contributions) == {
+            "warmth",
+            "greenery",
+            "ambient-lights",
+            "furnished",
+        }
 
 
 def test_aries_breakdown_matches_the_score_it_ranked_with(photos: Path):
@@ -129,7 +134,7 @@ def test_benchmark_flag_prints_per_rule_contributions(photos: Path):
     assert result.exit_code == 0, result.output
     assert "== benchmark: score contributions ==" in result.output
     assert "quality" in result.output
-    for rule in ("warmth", "greenery", "ambient-lights"):
+    for rule in ("warmth", "greenery", "ambient-lights", "furnished"):
         assert f"+ {rule}" in result.output
     assert "total" in result.output
 

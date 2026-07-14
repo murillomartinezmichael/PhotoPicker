@@ -13,6 +13,8 @@ from photopicker.profiles import get_profile, list_profiles
 from photopicker.profiles.aries import (
     AMBIENT_LIGHTS_LABEL,
     AMBIENT_LIGHTS_WEIGHT,
+    FURNISHED_LABEL,
+    FURNISHED_WEIGHT,
     GREENERY_LABEL,
     GREENERY_WEIGHT,
     STAGE_LABELS,
@@ -212,7 +214,12 @@ def test_aries_uses_classifier_with_correct_labels(folder_of_images: Path):
     classifier = StubClassifier()
     get_profile("aries").select(paths, classifier)
     assert len(classifier.calls) == len(paths)
-    expected = set(STAGE_LABELS.values()) | {WARMTH_LABEL, GREENERY_LABEL, AMBIENT_LIGHTS_LABEL}
+    expected = set(STAGE_LABELS.values()) | {
+        WARMTH_LABEL,
+        GREENERY_LABEL,
+        AMBIENT_LIGHTS_LABEL,
+        FURNISHED_LABEL,
+    }
     for _, labels in classifier.calls:
         assert set(labels) == expected
 
@@ -451,6 +458,80 @@ def test_aries_greenery_dominates_ambient(tmp_path: Path):
     # the ambient shot flows to "others".
     assert sel.categorized["after"][0] == paths[0], (
         "greenery-only shot should outrank an ambient-only shot within the same stage"
+    )
+    assert paths[1] in sel.categorized["others"]
+
+
+def test_aries_combined_stacks_furnished_bonus_additively():
+    # Furnished alone applies its own weight.
+    assert _combined(quality=1.0, warmth=0.0, furnished=1.0) == 1.0 + FURNISHED_WEIGHT
+    # All four bonuses stack additively inside the multiplier.
+    expected = 1.0 * (
+        1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT + FURNISHED_WEIGHT
+    )
+    assert _combined(
+        quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0, furnished=1.0
+    ) == pytest.approx(expected)
+    # Furnished defaults to 0 for callers that don't pass it (back-compat).
+    assert _combined(quality=1.0, warmth=0.4, ambient=0.2) == _combined(
+        quality=1.0, warmth=0.4, ambient=0.2, furnished=0.0
+    )
+
+
+def test_aries_furnished_bonus_ranks_staged_deck_above_empty(tmp_path: Path):
+    """Two 'after' shots, identical on every other rule -> the staged one wins.
+
+    Uniform-quality fixtures, so outdoor furniture is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=10)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    scores[paths[0].name] = {**_stage_probs("after"), FURNISHED_LABEL: 0.0}
+    scores[paths[1].name] = {**_stage_probs("after"), FURNISHED_LABEL: 0.95}
+    for p in paths[2:]:
+        scores[p.name] = {**_stage_probs("before", confidence=0.4), FURNISHED_LABEL: 0.0}
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    assert sel.categorized["after"][0] == paths[1], (
+        "deck staged with furniture should outrank an equal-quality empty deck"
+    )
+
+
+def test_aries_ambient_dominates_furnished(tmp_path: Path):
+    """Ambient (0.15) outranks furnished (0.12) when they fire on different shots.
+
+    Locks the full weight ordering: WARMTH > GREENERY > AMBIENT > FURNISHED.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    # paths[0]: ambient only, paths[1]: furnished only, others: neither.
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        AMBIENT_LIGHTS_LABEL: 0.9,
+        FURNISHED_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        AMBIENT_LIGHTS_LABEL: 0.0,
+        FURNISHED_LABEL: 0.9,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            AMBIENT_LIGHTS_LABEL: 0.0,
+            FURNISHED_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    # Aries picks one photo per stage, so the ambient shot claims "after" and the
+    # furnished shot flows to "others".
+    assert sel.categorized["after"][0] == paths[0], (
+        "ambient-only shot should outrank a furnished-only shot within the same stage"
     )
     assert paths[1] in sel.categorized["others"]
 

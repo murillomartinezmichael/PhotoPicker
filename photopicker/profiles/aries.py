@@ -35,6 +35,15 @@ GREENERY_WEIGHT = 0.2
 AMBIENT_LIGHTS_LABEL = "an outdoor deck at dusk or night illuminated by string lights lanterns or ambient lighting creating a cozy evening scene"
 AMBIENT_LIGHTS_WEIGHT = 0.15
 
+# Aesthetic bonus: Aries sells the *room*, not the platform. A deck staged with
+# furniture — seating, a dining set, a fire pit, cushions — lets a prospect
+# picture themselves in it; the same deck shot empty reads as a contractor's
+# progress photo. Orthogonal to the other three: furniture is present (or not)
+# independent of hour, planting, and lighting. Smallest weight in the stack, so
+# it settles ties beneath warmth, greenery, and ambient rather than steering them.
+FURNISHED_LABEL = "an outdoor deck or patio staged with outdoor furniture seating a dining set cushions or a fire pit"
+FURNISHED_WEIGHT = 0.12
+
 OTHERS_COUNT = 6
 
 # The rule stack. Adding a bonus = one entry here; ranking and the `--benchmark`
@@ -44,6 +53,7 @@ RULES = AestheticRules(
         AestheticRule("warmth", WARMTH_LABEL, WARMTH_WEIGHT),
         AestheticRule("greenery", GREENERY_LABEL, GREENERY_WEIGHT),
         AestheticRule("ambient-lights", AMBIENT_LIGHTS_LABEL, AMBIENT_LIGHTS_WEIGHT),
+        AestheticRule("furnished", FURNISHED_LABEL, FURNISHED_WEIGHT),
     ]
 )
 
@@ -53,14 +63,16 @@ def _combined(
     warmth: float,
     greenery: float = 0.0,
     ambient: float = 0.0,
+    furnished: float = 0.0,
 ) -> float:
-    """Quality with warmth + greenery + ambient bonuses stacked additively."""
+    """Quality with warmth + greenery + ambient + furnished bonuses stacked additively."""
     return RULES.combined(
         quality,
         {
             WARMTH_LABEL: warmth,
             GREENERY_LABEL: greenery,
             AMBIENT_LIGHTS_LABEL: ambient,
+            FURNISHED_LABEL: furnished,
         },
     )
 

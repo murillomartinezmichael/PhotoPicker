@@ -26,7 +26,7 @@ class AestheticRule:
     `weight` is a fraction of base quality awarded at probability 1.0 — a 0.5
     rule that fires fully makes the photo score 1.5x its bare quality. Rules
     stack additively, so keep the weights of a profile summing to something
-    sane (Aries: 0.85, Big7: 1.05) or a photo that trips every rule runs away
+    sane (Aries: 0.97, Big7: 1.05) or a photo that trips every rule runs away
     with the ranking.
     """
 

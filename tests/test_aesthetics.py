@@ -62,7 +62,7 @@ def test_profile_rule_names_and_labels_are_unique(profile):
 
 @pytest.mark.parametrize(
     ("profile", "cap"),
-    [(aries, 0.85), (big7, 1.05)],
+    [(aries, 0.97), (big7, 1.05)],
     ids=["aries", "big7"],
 )
 def test_stacked_weights_stay_within_the_documented_cap(profile, cap):
