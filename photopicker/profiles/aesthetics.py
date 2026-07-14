@@ -41,6 +41,53 @@ class AestheticRule:
 #: signal still outranks a soft one that happens to be green, warm, and lit.
 MAX_BONUS = 0.75
 
+#: Every rule name any profile has declared this process. Populated as the
+#: profile modules import, so it is complete once `photopicker.profiles` has
+#: been imported — which is what lets `set_weight_overrides` reject a typo
+#: instead of silently tuning nothing.
+_KNOWN_RULE_NAMES: set[str] = set()
+
+#: Rule-name → weight, overriding the weight the profile hard-codes. Set by
+#: CLI `--weight name=value` so a shoot can be re-tuned without a code edit;
+#: empty in library use, where the profile's own weights stand.
+_WEIGHT_OVERRIDES: dict[str, float] = {}
+
+
+def known_rule_names() -> set[str]:
+    """Names of every rule declared by an imported profile."""
+    return set(_KNOWN_RULE_NAMES)
+
+
+def weight_overrides() -> dict[str, float]:
+    """The overrides currently in force."""
+    return dict(_WEIGHT_OVERRIDES)
+
+
+def set_weight_overrides(overrides: Mapping[str, float]) -> None:
+    """Replace the active weight overrides.
+
+    Raises ValueError on a name no imported profile declares (a typo would
+    otherwise tune nothing at all and look like it worked) or on a negative
+    weight (a rule may be switched off with 0.0, never made a penalty — the
+    saturation math in `contributions` assumes non-negative bonuses).
+    """
+    unknown = sorted(set(overrides) - _KNOWN_RULE_NAMES)
+    if unknown:
+        known = ", ".join(sorted(_KNOWN_RULE_NAMES)) or "(none)"
+        raise ValueError(
+            f"unknown rule name(s): {', '.join(unknown)}. Known rules: {known}"
+        )
+    negative = sorted(name for name, w in overrides.items() if w < 0)
+    if negative:
+        raise ValueError(f"weights must be >= 0, got negative for: {', '.join(negative)}")
+    _WEIGHT_OVERRIDES.clear()
+    _WEIGHT_OVERRIDES.update(overrides)
+
+
+def clear_weight_overrides() -> None:
+    """Drop every override; profiles go back to their declared weights."""
+    _WEIGHT_OVERRIDES.clear()
+
 
 class AestheticRules:
     """An ordered rule stack: turns per-label CLIP probabilities into a score.
@@ -62,10 +109,16 @@ class AestheticRules:
     ) -> None:
         self._rules = rules
         self._max_bonus = max_bonus
+        _KNOWN_RULE_NAMES.update(rule.name for rule in rules)
 
     @property
     def max_bonus(self) -> float:
         return self._max_bonus
+
+    @staticmethod
+    def _weight(rule: AestheticRule) -> float:
+        """The rule's weight, honouring an active `--weight` override."""
+        return _WEIGHT_OVERRIDES.get(rule.name, rule.weight)
 
     @property
     def rules(self) -> list[AestheticRule]:
@@ -87,7 +140,8 @@ class AestheticRules:
         to the score the profile actually ranked with.
         """
         raw = {
-            rule.name: rule.weight * probs.get(rule.label, 0.0) for rule in self._rules
+            rule.name: self._weight(rule) * probs.get(rule.label, 0.0)
+            for rule in self._rules
         }
         earned = sum(raw.values())
         scale = self._max_bonus / earned if earned > self._max_bonus else 1.0

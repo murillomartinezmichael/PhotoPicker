@@ -30,7 +30,26 @@ from .profiles import (
     build_from_config,
     list_profiles,
     register_profile,
+    set_weight_overrides,
 )
+
+
+def _parse_weights(pairs: tuple[str, ...]) -> dict[str, float]:
+    """Turn `--weight name=value` strings into a rule-name → weight mapping.
+
+    Raises ValueError with a human-readable message on a malformed pair; the
+    caller turns that into a clean exit rather than a traceback.
+    """
+    weights: dict[str, float] = {}
+    for pair in pairs:
+        name, sep, raw = pair.partition("=")
+        if not sep or not name.strip():
+            raise ValueError(f"--weight expects NAME=VALUE, got {pair!r}")
+        try:
+            weights[name.strip()] = float(raw)
+        except ValueError:
+            raise ValueError(f"--weight value must be a number, got {raw!r}") from None
+    return weights
 
 
 def _share(value: float, total: float) -> str:
@@ -189,6 +208,18 @@ def _print_profiles_and_exit(ctx, _param, value):
     ),
 )
 @click.option(
+    "--weight",
+    "weight_pairs",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help=(
+        "Override a profile rule's weight for this run, e.g. "
+        "--weight warmth=0.8 --weight furnished=0. Repeatable. Rule names are "
+        "the ones --benchmark prints; 0 switches a rule off. Tune a shoot "
+        "without editing the profile."
+    ),
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help=(
@@ -213,6 +244,7 @@ def main(
     webp_quality: int,
     json_out: bool,
     benchmark: bool,
+    weight_pairs: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Pick the best photos from FOLDER using PROFILE."""
@@ -238,6 +270,13 @@ def main(
     if profile not in list_profiles():
         click.echo(f"Unknown profile {profile!r}. Available: {list_profiles()}", err=True)
         sys.exit(1)
+
+    if weight_pairs:
+        try:
+            set_weight_overrides(_parse_weights(weight_pairs))
+        except ValueError as exc:
+            click.echo(f"Bad --weight: {exc}", err=True)
+            sys.exit(1)
 
     thumb_widths: list[int] = []
     if thumbnails.strip():
