@@ -1,11 +1,17 @@
 # dependabot.yml — drop into .github/dependabot.yml
 #
-# Tracks dependency updates weekly and opens PRs. Includes the major ecosystems
-# this repo's projects use — comment out the ones that don't apply.
+# Scoped to this repo's actual manifests only. Dependabot's own update job
+# hard-errors (not a silent skip) for an ecosystem with no matching manifest
+# ("/action.yml or /.github/workflows/<anything>.yml not found", etc.) --
+# confirmed 2026-07-18 as a real, pre-existing fleet-wide gap (the-grind, a
+# pure Markdown repo with zero code manifests, had been failing 5/6
+# ecosystems every week since before this session). The generic template
+# blanket-included pip+npm+nuget+gomod+docker+github-actions regardless of
+# actual stack -- trimmed to only what this repo really has.
 
 version: 2
 updates:
-  # Python (requirements.txt / pyproject.toml)
+  # Python (pyproject.toml)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -15,37 +21,7 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # Node (package.json)
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels: ["dependencies", "node"]
-    commit-message:
-      prefix: "chore(deps)"
-
-  # .NET (csproj)
-  - package-ecosystem: "nuget"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels: ["dependencies", "dotnet"]
-    commit-message:
-      prefix: "chore(deps)"
-
-  # Go modules
-  - package-ecosystem: "gomod"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-    labels: ["dependencies", "go"]
-    commit-message:
-      prefix: "chore(deps)"
-
-  # Docker base images
+  # Docker base images (Dockerfile)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -55,7 +31,7 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # GitHub Actions versions
+  # GitHub Actions versions (workflows)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
