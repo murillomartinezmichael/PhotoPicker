@@ -57,6 +57,11 @@ repos:
   # Each hook enforces one repo-wide standard doc:
   #   check-decoupling.py → docs/DECOUPLING_STANDARDS.md
   #   check-security.py   → docs/audits/SECURITY_AUDIT.md § 7
+  #
+  # NOTE: BOT_CONDUCT_STANDARDS.md is enforced centrally, not per-project.
+  # The meta-repo's `make bot-conduct` (which folds into `make verify`) runs
+  # scripts/check-bot-conduct.py against every known bot. See
+  # docs/BOT_CONDUCT_STANDARDS.md § 7 for the current adopter list.
   - repo: local
     hooks:
       - id: check-decoupling
@@ -82,8 +87,8 @@ repos:
 
       # Prevents the SiteGuide 2026-07-03 outage class: tracked file imports
       # a first-party module whose target file isn't in the git index.
-      # Railway builds from the tracked tree — untracked target = boot crash.
-      # See scripts/check-tracked-imports.py.
+      # Railway (and any deploy that builds from the tracked tree) crashes
+      # with ModuleNotFoundError at boot. See scripts/check-tracked-imports.py.
       - id: check-tracked-imports
         name: check-tracked-imports — no committed import of an untracked local module
         entry: python scripts/check-tracked-imports.py .
