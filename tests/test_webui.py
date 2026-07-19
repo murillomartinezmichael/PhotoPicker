@@ -17,6 +17,7 @@ from photopicker.webui import (
     SessionStore,
     _build_export_manifest,
     _load_session_from_disk,
+    _override_stats,
     build_session,
 )
 
@@ -197,6 +198,64 @@ def test_load_session_from_disk_handles_corrupt_json(tmp_path: Path):
     candidates = [Candidate(idx=0, path="/x", filename="x")]
     got = _load_session_from_disk(sf, candidates)
     assert got == candidates
+
+
+# --- _override_stats ---------------------------------------------------------
+
+
+def _cand(idx: int, decision: str = "", rejected_reason: str = "") -> Candidate:
+    return Candidate(
+        idx=idx,
+        path=f"/p{idx}",
+        filename=f"p{idx}.jpg",
+        decision=decision,
+        rejected_reason=rejected_reason,
+    )
+
+
+def test_override_stats_counts_rejected_picks_as_overrides():
+    session = Session(
+        source_folder="/s",
+        candidates=[
+            _cand(0, "keep"),
+            _cand(1, "keep"),
+            _cand(2, "reject"),
+            _cand(3),  # undecided counts as kept — export treats it that way
+        ],
+    )
+    stats = _override_stats(session)
+    assert stats == {
+        "picks": 4,
+        "kept": 3,
+        "overridden": 1,
+        "rate": 0.25,
+        "rescued": 0,
+        "line": "kept 3/4 picks — 25% override",
+    }
+
+
+def test_override_stats_counts_rescued_pipeline_rejects():
+    session = Session(
+        source_folder="/s",
+        candidates=[
+            _cand(0, "keep"),
+            _cand(1, "keep", rejected_reason="blurry"),
+            _cand(2, "", rejected_reason="duplicates"),
+        ],
+    )
+    stats = _override_stats(session)
+    assert stats["picks"] == 1
+    assert stats["overridden"] == 0
+    assert stats["rescued"] == 1
+    assert "rescued 1 pipeline reject" in stats["line"]
+
+
+def test_override_stats_none_when_no_picks():
+    session = Session(
+        source_folder="/s",
+        candidates=[_cand(0, rejected_reason="blurry")],
+    )
+    assert _override_stats(session) is None
 
 
 # --- SessionStore ------------------------------------------------------------
@@ -490,6 +549,8 @@ def test_http_export_copies_keepers(tmp_path: Path, running_server):
     assert payload["exported"] == 1
     assert target.exists()
     assert len(list(target.iterdir())) == 1
+    # Export reports the trust metric: 3 kept of 4 picks = 25% override.
+    assert payload["override"]["line"] == "kept 3/4 picks — 25% override"
 
 
 def test_http_export_include_undecided(tmp_path: Path, running_server):
@@ -550,6 +611,7 @@ def test_http_export_writes_manifest_when_flag_set(tmp_path: Path, running_serve
     manifest = json.loads(manifest_path.read_text())
     assert manifest["exported_count"] == 2
     assert len(manifest["picks"]) == 2
+    assert manifest["override"]["picks"] == 4
 
 
 def test_http_export_embeds_xmp_when_flag_set(tmp_path: Path):

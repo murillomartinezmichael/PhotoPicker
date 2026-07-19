@@ -222,6 +222,36 @@ class SessionStore:
             ]
 
 
+def _override_stats(session: Session) -> dict[str, Any] | None:
+    """The honest accuracy metric: how often the human reverses pipeline picks.
+
+    Picks = candidates the pipeline surfaced as keepers (no `rejected_reason`).
+    An override is a pick the human rejected; undecided counts as kept — that
+    is exactly how export treats it. Rescues (pipeline rejects flipped to keep)
+    are counted separately. Returns None when the session has no picks.
+    """
+    picks = [c for c in session.candidates if not c.rejected_reason]
+    if not picks:
+        return None
+    overridden = sum(1 for c in picks if c.decision == "reject")
+    kept = len(picks) - overridden
+    rate = overridden / len(picks)
+    rescued = sum(
+        1 for c in session.candidates if c.rejected_reason and c.decision == "keep"
+    )
+    line = f"kept {kept}/{len(picks)} picks — {round(rate * 100)}% override"
+    if rescued:
+        line += f" · rescued {rescued} pipeline reject{'s' if rescued != 1 else ''}"
+    return {
+        "picks": len(picks),
+        "kept": kept,
+        "overridden": overridden,
+        "rate": round(rate, 4),
+        "rescued": rescued,
+        "line": line,
+    }
+
+
 def _build_export_manifest(
     session: Session,
     src_to_dest: dict[Path, Path],
@@ -263,6 +293,7 @@ def _build_export_manifest(
         "reject_summary": session.reject_summary,
         "input_count": session.input_count,
         "exported_count": len(exported_paths),
+        "override": _override_stats(session),
         "picks": picks,
     }
 
@@ -594,6 +625,9 @@ def make_handler(
             }
             if embed_xmp:
                 payload["xmp_embedded"] = rated
+            override = _override_stats(store.get())
+            if override is not None:
+                payload["override"] = override
             if write_manifest and src_to_dest:
                 manifest = _build_export_manifest(store.get(), src_to_dest, target_dir)
                 manifest_path = target_dir / "manifest.json"
@@ -1517,6 +1551,7 @@ async function runExport() {
   let msg = `Copied ${j.exported} keepers → ${j.target}`;
   if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
   if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
+  if (j.override) msg += ` · ${j.override.line}`;
   box.textContent = msg;
   toast(msg);
 }
