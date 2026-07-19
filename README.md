@@ -1,11 +1,41 @@
-# PhotoPicker
+# PhotoPicker — photo culling for pipelines
 
-ML-driven photo curator. Two verbs:
+Every photo-culling product on the market is a GUI fighting for the same
+wedding photographer. PhotoPicker is the other thing: a **scriptable Python
+library + CLI** that turns a raw folder into a curated keeper set from code —
+agency site builds, real-estate feeds, batch e-commerce, CI jobs, overnight
+automation. Deterministic offline pipeline, pip-installable, no GUI required
+(there is a local review UI when you want eyes on it).
 
-- **`photopicker-cull ./shoot --top 30`** — dead-simple culling. Point at a raw shoot folder, get the 30 best keepers in a local web UI. K to keep, X to reject, arrows to navigate, Enter for full-size, one button to export. Optional `--prompt "..."` for Claude Vision rerank on taste; `--no-ai` stays fully offline.
-- **`photopicker --folder ./shoot --profile aries-gallery`** — themed curation. Site-specific profiles (aries / big7 / default / aries-gallery) produce categorized selections for portfolio galleries.
+```python
+from photopicker import pick_photos
 
-Built so each of Michael's project sites (Aries Outdoor Living, Big7 Construction, etc.) gets a tight, themed gallery, and any 500-photo folder becomes a curated 30-shot lineup in under 10 minutes.
+pick = pick_photos(folder="./photos", profile_name="default")
+```
+
+Headless, in a pipeline:
+
+```bash
+# Cull 500 frames to the best 30, no UI, machine-readable result:
+photopicker-cull ./shoot --top 30 --no-serve --json-out
+
+# Copy winners for a static site build + write a manifest the frontend consumes:
+photopicker-cull ./shoot --top 30 --output ./site/img --no-serve --manifest cull.json
+
+# Hand results to Lightroom instead: star ratings embedded in the JPEG copies.
+photopicker-cull ./shoot --top 30 --output ./rated --no-serve --xmp
+```
+
+## Perf (measured, `scripts/perf_1k.py`)
+
+| Input | Result | Time |
+|---|---|---|
+| 500 photos | 30 keepers | **~9.5 s** |
+| 1000 photos | 30 keepers | **~18 s** |
+| Vision rerank | per photo | ~1.5 s (parallelized 4-wide) |
+
+Offline numbers from a typical dev laptop (Windows, py3.10). Reproduce with
+`python scripts/perf_1k.py --n 1000 --top 30`.
 
 ## Stack
 
@@ -13,7 +43,7 @@ Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI)
 
 ## Status
 
-**v0.12.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export. **222/222 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
+**v0.14.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export + XMP ratings + override-rate metric. **375 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
 
 ## Quick start — cull a shoot
 
@@ -36,23 +66,16 @@ export ANTHROPIC_API_KEY=sk-ant-...
 pip install "photopicker[vision]"
 photopicker-cull ~/photos/aries_shoot_2026-07-05 --top 30 \
   --prompt "best deck photos for a portfolio"
-
-# CLI-only, no UI, just copy the winners:
-photopicker-cull ~/photos/shoot --top 30 --output ~/galleries/aries/ --no-serve
 ```
-
-### Perf baseline
-
-500 photos → 30 keepers in **~9.5 s** offline. 1000 photos → **~18 s**. Vision
-rerank adds ~1.5 s per photo (parallelized 4-wide). Well under the 10-minute
-finish-line gate.  Run it yourself: `python scripts/perf_1k.py --n 1000 --top 30`.
 
 The UI:
 
 - Grid of survivors, monospace + LEDs (light on the eyes, no photo-review app fatigue)
 - **K** keep, **X** reject, **U** undo, **←/→** navigate, **Enter** full-size focus, **E** export, **?** help
+- Focus view shows *why*: composite score, "top N% of this shoot" percentile, AI reason when reranked, and the cull reason (blurry / too small / duplicate) on pipeline rejects
 - Session state persists to `.photopicker-session.json` — Ctrl+C safe
 - Export button copies keepers into any folder you name; HEIC → JPG by default; originals untouched
+- Export reports the override rate — how many pipeline picks you reversed — the honest accuracy metric (`scripts/override_rate.py` aggregates it across shoots)
 
 ### Cull flags
 
@@ -67,6 +90,8 @@ The UI:
 | `--no-ai` | Skip AI rerank even with `--prompt` |
 | `--ai-max-attempts N` | Retry each Vision call up to N times on rate limits / transient failures (env `PHOTOPICKER_VISION_MAX_ATTEMPTS`) |
 | `--overwrite / --no-overwrite` | Allow `--output` to write into a non-empty folder (default off — refuses to clobber) |
+| `--xmp / --no-xmp` | Embed `xmp:Rating` stars (5..1 by rank) into the JPEG copies `--output` writes — Lightroom/Bridge read them; originals untouched |
+| `--live-progress / --no-live-progress` | Boot the web UI first and stream cull progress into it (useful on 500+ photo folders) |
 | `--sort MODE` | Order keepers by `score` (default), `capture-time`, or `name` |
 | `--include-rejects` | Also surface pipeline rejects in the UI so you can rescue false positives |
 | `--resume` | Reopen the saved session in FOLDER without re-running the pipeline |
@@ -76,7 +101,8 @@ The UI:
 
 ## Install
 
-From the repo root:
+Not on PyPI yet — the publish is queued (see `PENDING_MANUAL.md`). Until then,
+from a clone:
 
 ```bash
 pip install -e .              # core (cull + profiles) — dep-light, no torch
@@ -156,7 +182,7 @@ See `photopicker/profiles/aries.py` as the reference.
 ```bash
 pip install -e ".[dev]"
 ruff check .
-pytest                        # 132 tests, ~12s
+pytest                        # 375 tests, ~40s
 pytest --cov=photopicker
 ```
 
