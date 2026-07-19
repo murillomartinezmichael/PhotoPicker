@@ -552,6 +552,43 @@ def test_http_export_writes_manifest_when_flag_set(tmp_path: Path, running_serve
     assert len(manifest["picks"]) == 2
 
 
+def test_http_export_embeds_xmp_when_flag_set(tmp_path: Path):
+    from photopicker.xmp import XMP_MARKER
+
+    src = tmp_path / "src"
+    src.mkdir()
+    paths = []
+    for i in range(2):
+        p = src / f"p{i}.jpg"
+        arr = np.full((600, 600, 3), 128, dtype=np.uint8)
+        arr[i * 100 : i * 100 + 100, :] = 255
+        Image.fromarray(arr).save(p)
+        paths.append(p)
+    session = build_session(source_folder=src, keepers=paths)
+    store = SessionStore(session=session, session_path=src / ".photopicker-session.json")
+    port = _free_port()
+    _, shutdown = _start_server(store, port)
+    time.sleep(0.05)
+    try:
+        base = f"http://127.0.0.1:{port}"
+        _http_post(f"{base}/decision", {"idx": 0, "decision": "keep"})
+        _http_post(f"{base}/decision", {"idx": 1, "decision": "keep"})
+        target = tmp_path / "xmp_export"
+        status, payload = _http_post(
+            f"{base}/export", {"target": str(target), "xmp": True}
+        )
+        assert status == 200
+        assert payload["exported"] == 2
+        assert payload["xmp_embedded"] == 2
+        for copy in target.glob("*.jpg"):
+            assert XMP_MARKER in copy.read_bytes()
+        # Originals in the source folder stay clean.
+        for original in paths:
+            assert XMP_MARKER not in original.read_bytes()
+    finally:
+        shutdown.stop()  # type: ignore[attr-defined]
+
+
 def test_bind_with_fallback_uses_next_port_when_first_taken(tmp_path):
     """If port N is bound, `_bind_with_fallback` should hand back N+1..N+tries."""
     from photopicker.webui import _bind_with_fallback, make_handler

@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from .convert import ImageUnreadable, copy_or_transcode, thumbnail_bytes
+from .xmp import embed_xmp_rating, rating_for_rank
 
 DEFAULT_PORT = 8765
 SESSION_FILE = ".photopicker-session.json"
@@ -560,6 +561,7 @@ def make_handler(
             include_undecided = bool(body.get("include_undecided", False))
             convert_heic = bool(body.get("convert_heic", True))
             write_manifest = bool(body.get("write_manifest", False))
+            embed_xmp = bool(body.get("xmp", False))
             target_dir = Path(str(target)).expanduser()
             try:
                 target_dir.mkdir(parents=True, exist_ok=True)
@@ -573,10 +575,15 @@ def make_handler(
                 self._send_json({"exported": 0, "target": str(target_dir), "note": "nothing to export"})
                 return
             src_to_dest: dict[Path, Path] = {}
-            for src in paths:
+            rated = 0
+            for rank, src in enumerate(paths, start=1):
                 try:
                     dest = copy_or_transcode(src, target_dir, convert_heic=convert_heic)
                     src_to_dest[src] = dest
+                    if embed_xmp and embed_xmp_rating(
+                        dest, rating_for_rank(rank, len(paths))
+                    ):
+                        rated += 1
                 except Exception:
                     log.exception("export failed for %s", src)
             written = [p.name for p in src_to_dest.values()]
@@ -585,6 +592,8 @@ def make_handler(
                 "target": str(target_dir),
                 "files": written,
             }
+            if embed_xmp:
+                payload["xmp_embedded"] = rated
             if write_manifest and src_to_dest:
                 manifest = _build_export_manifest(store.get(), src_to_dest, target_dir)
                 manifest_path = target_dir / "manifest.json"
@@ -1172,6 +1181,7 @@ INDEX_HTML = r"""<!doctype html>
     <label><input type="checkbox" id="export-undecided"> Include undecided (treat un-marked as keepers)</label>
     <label><input type="checkbox" id="export-no-convert"> Keep HEIC as HEIC (no transcode)</label>
     <label><input type="checkbox" id="export-manifest" checked> Write manifest.json alongside exports</label>
+    <label><input type="checkbox" id="export-xmp"> Embed XMP star ratings into JPEG copies (Lightroom-readable)</label>
     <div id="export-result"></div>
     <div class="actions">
       <button id="export-cancel">Cancel</button>
@@ -1492,6 +1502,7 @@ async function runExport() {
     include_undecided: $('export-undecided').checked,
     convert_heic: !$('export-no-convert').checked,
     write_manifest: $('export-manifest').checked,
+    xmp: $('export-xmp').checked,
   };
   const r = await postJSON('/export', body);
   const box = $('export-result');
@@ -1505,6 +1516,7 @@ async function runExport() {
   box.classList.remove('err');
   let msg = `Copied ${j.exported} keepers → ${j.target}`;
   if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
+  if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
   box.textContent = msg;
   toast(msg);
 }

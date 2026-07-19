@@ -33,6 +33,7 @@ from .profiles import (
     register_profile,
     set_weight_overrides,
 )
+from .xmp import embed_xmp_rating, rating_for_rank
 
 
 def _parse_weights(pairs: tuple[str, ...]) -> dict[str, float]:
@@ -593,6 +594,18 @@ def main(
     ),
 )
 @click.option(
+    "--xmp/--no-xmp",
+    "xmp_ratings",
+    default=False,
+    show_default=True,
+    help=(
+        "Embed an xmp:Rating star rating (5..1, scaled by keeper rank) into "
+        "the JPEG copies written by --output, so Lightroom/Bridge pick the "
+        "cull up. JPEG copies only — sidecars are ignored for JPEG, and "
+        "originals are never touched."
+    ),
+)
+@click.option(
     "--live-progress/--no-live-progress",
     default=False,
     show_default=True,
@@ -623,6 +636,7 @@ def cull_main(
     resume: bool,
     manifest_path: Path | None,
     overwrite: bool,
+    xmp_ratings: bool,
     live_progress: bool,
     json_out: bool,
 ) -> None:
@@ -766,13 +780,20 @@ def cull_main(
             click.echo(f"Cannot create output folder {output}: {exc}", err=True)
             sys.exit(2)
         copied = 0
-        for src in result.keepers:
+        rated = 0
+        for rank, src in enumerate(result.keepers, start=1):
             try:
-                copy_or_transcode(src, output, convert_heic=True)
+                dest = copy_or_transcode(src, output, convert_heic=True)
                 copied += 1
-            except OSError as exc:
+                if xmp_ratings and embed_xmp_rating(
+                    dest, rating_for_rank(rank, len(result.keepers))
+                ):
+                    rated += 1
+            except (OSError, ValueError) as exc:
                 click.echo(f"  copy failed for {src.name}: {exc}", err=True)
         click.echo(f"\nCopied {copied}/{len(result.keepers)} keepers -> {output}", err=True)
+        if xmp_ratings:
+            click.echo(f"Embedded xmp:Rating into {rated}/{copied} JPEG copies", err=True)
         if copied == 0 and result.keepers:
             sys.exit(2)
 
