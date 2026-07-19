@@ -410,6 +410,16 @@ def test_http_root_returns_html(running_server):
     assert b"cull" in body
 
 
+def test_http_root_ships_focus_stat_block(running_server):
+    """The focus view carries the transparency stat block: composite score,
+    client-side percentile, the ai_reason line, and a culled-reason row for
+    pipeline rejects. Locked so a UI refactor can't silently drop them."""
+    base, _, _ = running_server
+    _, body, _ = _http_get(f"{base}/")
+    for marker in (b"focus-stats", b"focus-pct", b"focus-culled", b"focus-ai-reason", b"qualityPercentile"):
+        assert marker in body
+
+
 def test_http_photo_returns_jpeg_bytes(running_server):
     base, _, _ = running_server
     status, body, ctype = _http_get(f"{base}/photo/0?w=200")

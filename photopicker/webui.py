@@ -905,6 +905,20 @@ INDEX_HTML = r"""<!doctype html>
   }
   #focus-view .focus-meta strong { color: var(--ink); }
   #focus-view .focus-meta .prompt-line { color: var(--muted); }
+  #focus-view .focus-stats {
+    margin-top: 10px;
+    display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    font-size: 12px; color: var(--muted);
+    letter-spacing: 0.05em;
+    max-width: min(90vw, 760px);
+  }
+  #focus-view .focus-stats .val { color: var(--ink); font-weight: 700; }
+  #focus-view .focus-stats .pct { color: var(--cyan); }
+  #focus-view .focus-stats .reason { color: var(--muted); }
+  #focus-view .focus-stats .culled { color: var(--reject); }
   #focus-view .close-hint { position: absolute; top: 12px; right: 16px; color: var(--muted); font-size: 11px; }
   #export-dialog, #help-dialog {
     position: fixed; inset: 0;
@@ -1138,10 +1152,13 @@ INDEX_HTML = r"""<!doctype html>
   <img id="focus-img" alt="">
   <div class="focus-meta">
     <span><strong id="focus-name"></strong></span>
-    <span>quality <strong id="focus-score"></strong></span>
-    <span id="focus-ai" style="display:none">ai <strong id="focus-ai-score"></strong></span>
     <span id="focus-capture" class="prompt-line"></span>
-    <span id="focus-ai-reason" class="prompt-line"></span>
+  </div>
+  <div class="focus-stats" id="focus-stats" aria-label="photo score details">
+    <span id="focus-quality">quality <span class="val" id="focus-score"></span> <span class="pct" id="focus-pct"></span></span>
+    <span id="focus-ai" style="display:none">ai <span class="val" id="focus-ai-score"></span></span>
+    <span id="focus-ai-reason" class="reason"></span>
+    <span id="focus-culled" class="culled" style="display:none">culled: <span id="focus-reject-reason"></span></span>
   </div>
 </div>
 
@@ -1409,6 +1426,19 @@ async function undo() {
   toast('undone');
 }
 
+function qualityPercentile(c) {
+  // 1-based rank of this photo's composite score among the session's pipeline
+  // keepers, as "top N%". Client-side only — the score list is already here.
+  const scores = state.session.candidates
+    .filter((x) => !x.rejected_reason)
+    .map((x) => x.score || 0)
+    .sort((a, b) => b - a);
+  if (!scores.length) return null;
+  let rank = scores.findIndex((s) => s <= (c.score || 0)) + 1;
+  if (rank === 0) rank = scores.length;
+  return Math.max(1, Math.round((rank / scores.length) * 100));
+}
+
 function openFocus() {
   if (!state.session || !state.session.candidates.length) return;
   const c = state.session.candidates.find((x) => x.idx === state.focus)
@@ -1417,7 +1447,18 @@ function openFocus() {
   state.focus = c.idx;
   $('focus-img').src = `/photo/${c.idx}?w=1200`;
   $('focus-name').textContent = c.filename;
-  $('focus-score').textContent = (c.score * 100).toFixed(0);
+  if (c.rejected_reason) {
+    // Pipeline reject — its 0.0 score is a sentinel, not a measurement.
+    $('focus-quality').style.display = 'none';
+    $('focus-culled').style.display = '';
+    $('focus-reject-reason').textContent = c.rejected_reason;
+  } else {
+    $('focus-quality').style.display = '';
+    $('focus-culled').style.display = 'none';
+    $('focus-score').textContent = (c.score * 100).toFixed(0);
+    const pct = qualityPercentile(c);
+    $('focus-pct').textContent = pct != null ? `· top ${pct}% of this shoot` : '';
+  }
   if (c.ai_score != null) {
     $('focus-ai').style.display = '';
     $('focus-ai-score').textContent = c.ai_score;
