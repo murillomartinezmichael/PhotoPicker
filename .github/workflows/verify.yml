@@ -168,3 +168,8 @@ jobs:
         run: |
           echo "## verify-standards result" >> $GITHUB_STEP_SUMMARY
           echo "See individual steps above. Full standard: docs/ENGINEERING_STANDARDS.md § 4 + § 6." >> $GITHUB_STEP_SUMMARY
+
+# Cancel superseded runs of the same ref — CI-budget discipline (2026-07-19).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
