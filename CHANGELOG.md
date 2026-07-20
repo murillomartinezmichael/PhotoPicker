@@ -7,6 +7,28 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Burst similarity / keeper swap in the web UI.** `dedup_perceptual_clusters()`
+  (new `photopicker/dedup.py` function) keeps `dedup_perceptual`'s exact
+  keep-list but also returns which near-duplicate frames lost to each winner.
+  `cull()` threads that through as `CullResult.clusters` (winner -> losers)
+  and `CullResult.all_scores` (every scored survivor, not just keepers, so a
+  cluster loser's score is still visible). The web UI's focus view renders a
+  keeper's burst as a row of thumbnails (`GET /photo/<idx>?m=J` serves the
+  Jth loser); clicking one or `POST /swap {idx, member}` promotes it to the
+  pick — reversible by swapping again, and it clears the stale AI
+  score/reason since those judged the old frame.
+- 16 new tests (dedup clusters ×3, culler clusters/all_scores contract ×1,
+  build_session similar-list ×2, SessionStore.swap ×5, HTTP `/swap` +
+  `/photo?m=` ×5). **391/391 green, ruff-clean.**
+
+### Fixed
+- **`CullResult.scores` public contract restored to keepers-only.** An
+  in-flight version of the burst-swap feature (2026-07-19) leaked cluster-loser
+  paths into `scores`, which broke `pick_photos`/`cull` callers relying on
+  `set(result.scores) == set(result.keepers)` (that assumption is also a
+  pinned test). Loser scores now live in the new `all_scores` field instead.
+
 ### Changed
 - Aesthetic bonuses now **saturate** at `aesthetics.MAX_BONUS` (0.75): a photo
   can gain at most 75% of its base quality from the rule stack, no matter how

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from .dedup import collapse_heic_jpg_twins, dedup_perceptual
+from .dedup import collapse_heic_jpg_twins, dedup_perceptual_clusters
 from .exif import get_capture_time
 from .quality_gate import filter_usable
 from .scoring import composite_score
@@ -42,6 +42,16 @@ class CullResult:
     scores: dict[Path, float]
     rejected: dict[str, list[Path]] = field(default_factory=dict)
     input_count: int = 0
+    # winner -> near-duplicate frames that lost to it (perceptual dedup). The
+    # frames themselves never enter `keepers`/`scores` — that contract is
+    # keepers-only. Their scores live in `all_scores` so a reviewer can still
+    # see them (burst compare / swap-the-pick) without the public result
+    # shape changing shape depending on whether a cull had bursts in it.
+    clusters: dict[Path, list[Path]] = field(default_factory=dict)
+    # Every scored survivor (pre quality-gate, pre top-N), keepers included.
+    # Lets consumers look up a cluster member's score without it being a
+    # "kept" photo.
+    all_scores: dict[Path, float] = field(default_factory=dict)
 
     @property
     def total_input(self) -> int:
@@ -121,7 +131,7 @@ def cull(
     by_score_desc = sorted(twin_collapsed, key=lambda p: scores[p], reverse=True)
     if progress:
         progress("dedup", 0, len(by_score_desc))
-    deduped = dedup_perceptual(by_score_desc)
+    deduped, clusters = dedup_perceptual_clusters(by_score_desc)
     perceptual_dropped = [p for p in twin_collapsed if p not in set(deduped)]
     if progress:
         progress("dedup", len(by_score_desc), len(by_score_desc))
@@ -158,6 +168,8 @@ def cull(
             "blurry": blurry,
         },
         input_count=n,
+        clusters=clusters,
+        all_scores=scores,
     )
 
 

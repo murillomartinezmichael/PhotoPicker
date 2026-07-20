@@ -158,6 +158,30 @@ def test_build_session_populates_capture_time_when_present(tmp_path: Path):
     assert session.candidates[0].capture_time is None
 
 
+def test_build_session_fills_similar_from_clusters(tmp_path: Path):
+    winner = _make(tmp_path, "winner.png", 1)
+    loser_a = _make(tmp_path, "loser_a.png", 2)
+    loser_b = _make(tmp_path, "loser_b.png", 3)
+
+    session = build_session(
+        source_folder=tmp_path,
+        keepers=[winner],
+        scores={winner: 0.9, loser_a: 0.6, loser_b: 0.4},
+        clusters={winner: [loser_a, loser_b]},
+    )
+
+    similar = session.candidates[0].similar
+    assert [s["filename"] for s in similar] == ["loser_a.png", "loser_b.png"]
+    assert similar[0]["score"] == pytest.approx(0.6)
+    assert similar[1]["score"] == pytest.approx(0.4)
+
+
+def test_build_session_no_clusters_leaves_similar_empty(tmp_path: Path):
+    keeper = _make(tmp_path, "solo.png", 1)
+    session = build_session(source_folder=tmp_path, keepers=[keeper], scores={keeper: 0.5})
+    assert session.candidates[0].similar == []
+
+
 def test_build_export_manifest_shape(tmp_path: Path):
     session = Session(
         source_folder=str(tmp_path),
@@ -343,6 +367,75 @@ def test_store_undecided_keepers_includes_undecided(tmp_path: Path):
     keepers = store.undecided_keepers()
 
     assert set(keepers) == {paths[0], paths[2]}
+
+
+def _store_with_burst(tmp_path: Path):
+    winner = _make(tmp_path, "winner.png", 1)
+    loser = _make(tmp_path, "loser.png", 2)
+    session = build_session(
+        source_folder=tmp_path,
+        keepers=[winner],
+        scores={winner: 0.9, loser: 0.6},
+        clusters={winner: [loser]},
+    )
+    store = SessionStore(session=session, session_path=tmp_path / ".photopicker-session.json")
+    return store, winner, loser
+
+
+def test_store_swap_promotes_member_and_swaps_similar_back(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+
+    store.swap(0, 0)
+
+    c = store.get().candidates[0]
+    assert c.path == str(loser)
+    assert c.filename == "loser.png"
+    assert c.score == pytest.approx(0.6)
+    # The old pick is now the thing you'd swap back in.
+    assert c.similar[0]["path"] == str(winner)
+    assert c.similar[0]["score"] == pytest.approx(0.9)
+
+
+def test_store_swap_clears_ai_fields(tmp_path: Path):
+    winner = _make(tmp_path, "winner.png", 1)
+    loser = _make(tmp_path, "loser.png", 2)
+    session = build_session(
+        source_folder=tmp_path,
+        keepers=[winner],
+        scores={winner: 0.9, loser: 0.6},
+        ai_scores={winner: (80, "warm light")},
+        clusters={winner: [loser]},
+    )
+    store = SessionStore(session=session, session_path=tmp_path / ".photopicker-session.json")
+
+    store.swap(0, 0)
+
+    c = store.get().candidates[0]
+    assert c.ai_score is None
+    assert c.ai_reason == ""
+
+
+def test_store_swap_is_reversible(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+
+    store.swap(0, 0)
+    store.swap(0, 0)
+
+    c = store.get().candidates[0]
+    assert c.path == str(winner)
+    assert c.similar[0]["path"] == str(loser)
+
+
+def test_store_swap_bad_idx_raises(tmp_path: Path):
+    store, _, _ = _store_with_burst(tmp_path)
+    with pytest.raises(IndexError):
+        store.swap(99, 0)
+
+
+def test_store_swap_bad_member_raises(tmp_path: Path):
+    store, _, _ = _store_with_burst(tmp_path)
+    with pytest.raises(IndexError):
+        store.swap(0, 5)
 
 
 # --- HTTP server (integration) -----------------------------------------------
@@ -533,6 +626,51 @@ def test_http_reset_clears_all(running_server):
     assert status == 200
     for c in store.get().candidates:
         assert c.decision == ""
+
+
+@pytest.fixture
+def running_server_with_burst(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    port = _free_port()
+    _, shutdown = _start_server(store, port)
+    time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}", store, winner, loser
+    shutdown.stop()  # type: ignore[attr-defined]
+
+
+def test_http_swap_promotes_member(running_server_with_burst):
+    base, store, winner, loser = running_server_with_burst
+    status, payload = _http_post(f"{base}/swap", {"idx": 0, "member": 0})
+    assert status == 200
+    assert payload["ok"] is True
+    assert store.get().candidates[0].path == str(loser)
+    assert store.get().candidates[0].similar[0]["path"] == str(winner)
+
+
+def test_http_swap_bad_input_returns_400(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, _ = _http_post(f"{base}/swap", {"idx": "x", "member": 0})
+    assert status == 400
+
+
+def test_http_swap_out_of_range_returns_404(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, _ = _http_post(f"{base}/swap", {"idx": 0, "member": 99})
+    assert status == 404
+
+
+def test_http_photo_serves_similar_member(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, body, ctype = _http_get(f"{base}/photo/0?w=200&m=0")
+    assert status == 200
+    assert ctype.startswith("image/jpeg")
+    assert body[:3] == b"\xff\xd8\xff"
+
+
+def test_http_photo_similar_member_out_of_range_returns_404(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, _, _ = _http_get(f"{base}/photo/0?m=99")
+    assert status == 404
 
 
 def test_http_export_copies_keepers(tmp_path: Path, running_server):

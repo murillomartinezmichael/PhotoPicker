@@ -824,12 +824,13 @@ def cull_main(
         session = build_session(
             source_folder=folder,
             keepers=result.keepers,
-            scores=result.scores,
+            scores=result.all_scores,
             reject_summary=result.reject_counts(),
             input_count=result.total_input,
             prompt=prompt or "",
             ai_scores=ai_scores or None,
             include_rejects=rejected_map,
+            clusters=result.clusters,
         )
         store = SessionStore(session=session, session_path=session_path)
         try:
@@ -1025,12 +1026,13 @@ def _run_live_progress_flow(
     hydrated = build_session(
         source_folder=folder,
         keepers=result.keepers,
-        scores=result.scores,
+        scores=result.all_scores,
         reject_summary=result.reject_counts(),
         input_count=result.total_input,
         prompt=prompt or "",
         ai_scores=ai_scores or None,
         include_rejects=rejected_map,
+        clusters=result.clusters,
     )
     store.hydrate(hydrated)
     broker.mark_finished()

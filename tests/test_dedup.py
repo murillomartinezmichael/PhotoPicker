@@ -10,6 +10,7 @@ from photopicker.dedup import (
     collapse_heic_jpg_twins,
     dedup_all,
     dedup_perceptual,
+    dedup_perceptual_clusters,
     hamming_distance,
 )
 
@@ -98,6 +99,42 @@ def test_dedup_all_passes_through_unhashable(tmp_path):
     corrupt = tmp_path / "corrupt.jpg"
     corrupt.write_bytes(b"\xff\xd8truncated")
     assert dedup_all([corrupt]) == [corrupt]
+
+
+def test_dedup_perceptual_clusters_maps_losers_to_winner(tmp_path):
+    a = _write_gradient(tmp_path / "a.png", seed=0)
+    b = _write_gradient(tmp_path / "b.png", seed=0)
+    c = _write_gradient(tmp_path / "c.png", seed=0)
+    solo = _write_solid(tmp_path / "solo.png", value=200)
+
+    kept, clusters = dedup_perceptual_clusters([a, b, c, solo])
+
+    # First-seen of the gradient trio wins; b/c are its cluster losers.
+    assert kept == [a, solo]
+    assert clusters == {a: [b, c]}
+
+
+def test_dedup_perceptual_clusters_matches_dedup_perceptual(tmp_path):
+    """The clustered variant must keep exactly what the plain one keeps."""
+    a = _write_gradient(tmp_path / "a.png", seed=0)
+    b = _write_gradient(tmp_path / "b.png", seed=0)
+    solid = _write_solid(tmp_path / "solid.png", value=200)
+
+    kept_plain = dedup_perceptual([a, b, solid])
+    kept_clustered, _ = dedup_perceptual_clusters([a, b, solid])
+
+    assert kept_plain == kept_clustered
+
+
+def test_dedup_perceptual_clusters_passes_through_unhashable(tmp_path):
+    good = _write_gradient(tmp_path / "good.png", seed=0)
+    corrupt = tmp_path / "corrupt.jpg"
+    corrupt.write_bytes(b"not an image")
+
+    kept, clusters = dedup_perceptual_clusters([good, corrupt])
+
+    assert kept == [good, corrupt]
+    assert clusters == {}
 
 
 def test_dedup_all_combines_twin_and_perceptual(tmp_path):

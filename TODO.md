@@ -1,5 +1,21 @@
 # PhotoPicker TODO
 
+## SHIPPED this session (2026-07-20, fleet re-audit)
+
+- **Finished the burst-similarity/keeper-swap feature left dirty+broken by
+  the 2026-07-19 interrupted session** (see `WIP_HANDOFF_2026-07-19.md`,
+  now resolved and removed). That work-in-progress had leaked cluster-loser
+  paths into `CullResult.scores`, breaking the keepers-only public contract
+  (`test_cull_returns_top_n_from_folder` was red: 374 passed, 1 failed).
+  Restored the contract and added a new `CullResult.all_scores` field
+  (every scored survivor, not just keepers) so cluster-loser scores are
+  still reachable for the web UI's burst-compare/swap feature without
+  changing what counts as a "keeper."
+- 16 new tests covering `dedup_perceptual_clusters`, the culler
+  clusters/all_scores contract, `build_session`'s `similar` list, and
+  `SessionStore.swap` (unit + HTTP `/swap` + `/photo?m=`).
+  **391/391 tests green, ruff-clean.**
+
 ## SHIPPED this session (2026-07-14, auto-improve tick 8)
 
 - **A corrupt photo is now rejected as `unreadable`, not `duplicates`.**

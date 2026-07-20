@@ -86,19 +86,47 @@ def dedup_perceptual(
     vanish into the caller's `duplicates` reject bucket under a reason that was
     simply false.
     """
+    kept, _ = dedup_perceptual_clusters(paths, threshold)
+    return kept
+
+
+def dedup_perceptual_clusters(
+    paths: Iterable[Path],
+    threshold: int = DEFAULT_HAMMING_THRESHOLD,
+) -> tuple[list[Path], dict[Path, list[Path]]]:
+    """`dedup_perceptual`, but cluster membership survives: returns
+    `(kept, clusters)` where `clusters[winner]` lists the near-duplicate
+    frames that lost to it, in seen order.
+
+    The map is what lets a reviewer *see* a burst side-by-side and swap in a
+    better expression instead of trusting the score blindly. Unhashable
+    photos pass through exactly as in `dedup_perceptual` and never cluster.
+    """
     kept: list[Path] = []
+    hashed_kept: list[Path] = []
     hashes: list[int] = []
+    clusters: dict[Path, list[Path]] = {}
     for p in paths:
         try:
             h = average_hash(p)
         except Exception:
             kept.append(p)
             continue
-        if any(hamming_distance(h, kh) <= threshold for kh in hashes):
+        winner = next(
+            (
+                hashed_kept[i]
+                for i, kh in enumerate(hashes)
+                if hamming_distance(h, kh) <= threshold
+            ),
+            None,
+        )
+        if winner is not None:
+            clusters.setdefault(winner, []).append(p)
             continue
         kept.append(p)
+        hashed_kept.append(p)
         hashes.append(h)
-    return kept
+    return kept, clusters
 
 
 def dedup_all(
