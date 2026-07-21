@@ -5,16 +5,21 @@ description = "Scriptable photo culling for pipelines — deterministic offline 
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-authors = [{ name = "Michael Murillo Martinez" }]
+authors = [{ name = "Michael Murillo Martinez", email = "murillomartinezmichael@gmail.com" }]
 keywords = ["photo", "culling", "image-quality", "dedup", "pipeline"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Graphics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
 dependencies = [
     "pillow>=10.0",
     "pillow-heif>=0.16",
@@ -22,6 +27,12 @@ dependencies = [
     "opencv-python-headless>=4.8",
     "click>=8.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/murillomartinezmichael/PhotoPicker"
+Repository = "https://github.com/murillomartinezmichael/PhotoPicker"
+Issues = "https://github.com/murillomartinezmichael/PhotoPicker/issues"
+Changelog = "https://github.com/murillomartinezmichael/PhotoPicker/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 clip = [

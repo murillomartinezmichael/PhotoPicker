@@ -3,10 +3,11 @@
 Manual gates only Mike can clear. Each item: What / Why / Resumes + a checkbox.
 Agent keeps working past these; sweep on your own cadence.
 
-- [ ] **Publish photopicker 0.14.0 to PyPI.**
-  - **What to do:** Create/log into a PyPI account, mint an API token, then from the repo root: `python -m pip install build twine && python -m build && python -m twine upload dist/*`.
+- [ ] **Publish photopicker 0.14.0 to PyPI — packaging fully prepped 2026-07-20, only the account/token/upload step remains.**
+  - **What's done:** `pyproject.toml` metadata completed (License classifier + SPDX-equivalent MIT license file, `project.urls` for Homepage/Repository/Issues/Changelog, author email, expanded classifiers). Built and verified: `python -m build` produces both `photopicker-0.14.0-py3-none-any.whl` and `photopicker-0.14.0.tar.gz`; `twine check dist/*` → **PASSED** for both. README renders correctly as the wheel's `text/markdown` long_description (confirmed by unzipping the wheel and inspecting `METADATA`). Installed the built wheel into a throwaway venv and ran a real smoke test: `import photopicker` succeeds, `pick_photos` is importable and callable, and both CLI entry points (`photopicker`, `photopicker-cull`) execute (the `photopicker --help` command hits a pre-existing, unrelated Windows Git-Bash `cp1252` console-encoding issue on a `→` character in its help text — reproduces identically in the plain dev `.venv` too, fixed by `PYTHONIOENCODING=utf-8`, not a packaging defect). README audited for anything that shouldn't be public — repo is already public on GitHub, nothing to redact. Exact upload steps written to `PUBLISHING.md`.
+  - **What to do:** Create/log into a PyPI account (+ 2FA), mint an API token, then from the repo root follow `PUBLISHING.md` — TestPyPI dry run recommended first, then `twine upload dist/*`.
   - **Why blocked on him:** Account creation + credential handling — agents don't own accounts or tokens.
-  - **Resumes:** README "Install" section flips to `pip install photopicker`; the dev/automation-wedge positioning (TODO research item, 2026-07-19) is fully live. Package metadata (readme/license/classifiers) is already prepped and wheel-build verified.
+  - **Resumes:** README "Install" section flips to `pip install photopicker`; the dev/automation-wedge positioning (TODO research item, 2026-07-19) is fully live.
 
 - [ ] **Publish a measured override-rate number in the README.**
   - **What to do:** After reviewing 3+ real Aries/Big7 shoots in the web UI, run `python scripts/override_rate.py --root <photos root>` and paste the aggregate line into README (Status or a small "Accuracy" note).
