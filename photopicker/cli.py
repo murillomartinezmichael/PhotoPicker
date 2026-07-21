@@ -550,6 +550,16 @@ def main(
     help="Reject frames whose longer edge is below this many pixels.",
 )
 @click.option(
+    "--faces/--no-faces",
+    default=False,
+    show_default=True,
+    help=(
+        "Down-rank photos where the worst detected face has closed eyes "
+        "(MediaPipe Face Mesh, Apache 2.0 — opt-in). No face -> no penalty. "
+        "Requires `pip install \"photopicker[faces]\"`."
+    ),
+)
+@click.option(
     "--sort",
     "sort_mode",
     type=click.Choice(SORT_MODES),
@@ -631,6 +641,7 @@ def cull_main(
     ai_max_attempts: int | None,
     sharpness: float,
     min_long_edge: int,
+    faces: bool,
     sort_mode: str,
     include_rejects: bool,
     resume: bool,
@@ -678,6 +689,7 @@ def cull_main(
             top_n=top_n,
             sharpness=sharpness,
             min_long_edge=min_long_edge,
+            faces=faces,
             sort_mode=sort_mode,
             prompt=prompt,
             no_ai=no_ai,
@@ -695,14 +707,19 @@ def cull_main(
             click.echo(f"  {stage}: {done}/{total}", err=True)
 
     click.echo(f"Culling {len(paths)} -> top {top_n}...", err=True)
-    result = cull(
-        paths,
-        top_n=top_n,
-        min_sharpness=sharpness,
-        min_long_edge=min_long_edge,
-        sort=sort_mode,
-        progress=_progress,
-    )
+    try:
+        result = cull(
+            paths,
+            top_n=top_n,
+            min_sharpness=sharpness,
+            min_long_edge=min_long_edge,
+            sort=sort_mode,
+            progress=_progress,
+            face_gate=faces,
+        )
+    except ImportError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
 
     ai_scores: dict[Path, tuple[int, str]] = {}
     if prompt and not no_ai:
@@ -892,6 +909,7 @@ def _run_live_progress_flow(
     top_n: int,
     sharpness: float,
     min_long_edge: int,
+    faces: bool,
     sort_mode: str,
     prompt: str | None,
     no_ai: bool,
@@ -964,6 +982,7 @@ def _run_live_progress_flow(
             min_long_edge=min_long_edge,
             sort=sort_mode,
             progress=_progress,
+            face_gate=faces,
         )
     except Exception as exc:  # unexpected — surface + finish broker so UI unblocks
         broker.update("error", 0, 0)

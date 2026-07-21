@@ -15,6 +15,22 @@
   clusters/all_scores contract, `build_session`'s `similar` list, and
   `SessionStore.swap` (unit + HTTP `/swap` + `/photo?m=`).
   **391/391 tests green, ruff-clean.**
+- **Face/closed-eye detection shipped** (Mike's model decision, same day):
+  `photopicker/faces.py::face_eye_score()` using MediaPipe Face Mesh —
+  Apache License 2.0, pinned `mediapipe==0.10.21` (later versions dropped the
+  offline legacy API this uses). Published Eye Aspect Ratio (EAR) technique
+  against iris-refined landmarks, no training/labeled data needed. Wired
+  into `culler.cull(..., face_gate=True)` / CLI `--faces` (default off —
+  0.4x score penalty when the worst detected face's eyes are closed, no
+  penalty when no face is found). New `[faces]` extra in `pyproject.toml`.
+  7 new tests in `tests/test_faces.py` (importorskip-guarded, matching the
+  CLIP/vision pattern), including a real culler-ranking integration test
+  proving the gate flips which frame of a synthetic "burst" pair survives
+  dedup. Verified against real synthetic face images (open EAR ~0.41-0.46,
+  closed EAR ~0.11-0.17 — both sides of the published 0.2 threshold).
+  **398/398 tests green, ruff-clean.** Resolves the PENDING_MANUAL model
+  decision and the competitor-research item below (cv2/YuNet + trained
+  classifier plan superseded by the pretrained-landmark approach).
 
 ## SHIPPED this session (2026-07-14, auto-improve tick 8)
 
@@ -194,8 +210,8 @@ Source of product truth: ..\AI_HUB.md.
   - *Pattern source:* Optyx's whole integration story (verified) is writing star ratings and color labels to XMP that Lightroom picks up, so it slots into existing pro workflows. PhotoPicker's cull results are invisible to every pro tool — export only copies files.
 - [ ] **[high/S] (positioning)** Publish to PyPI as-is (no support commitment) and rewrite the README top as 'photo culling for pipelines': 3-line pick_photos() example, headless CI/automation usage, perf table. Own the dev/automation wedge (agency site builds, real-estate feeds, batch e-commerce) where zero competitors exist — do not fight GUIs for photographers.
   - *Pattern source:* All five competitors are GUI apps fighting for the same wedding photographer; none sells a scriptable library, yet FilterPixel's own guide calls overnight-pipeline integration the biggest ROI. PhotoPicker already is the pipeline product (pip-installable, pick_photos() API, --json-out/--no-serve, deterministic, README-claimed 222 green tests; repo actually has ~340 test functions) but its README positions it as a personal tool.
-- [ ] **[high/M] (features)** Add photopicker/faces.py using cv2.FaceDetectorYN — OpenCV is already a dependency. Corrected spec: opencv-python ships the API but not the weights (bundle the ~230KB YuNet ONNX), and YuNet's 5 landmarks give one point per eye so eye-aspect-ratio is impossible — closed-eye needs a tiny open/closed classifier on eye crops instead. Wire as a 'closed-eyes' quality_gate reject reason plus a per-profile face_score weight, and reuse the same detections to render a Narrative-style face-crop strip with eye badges in the focus view (the UI payoff, folded in from the original separate gap).
-  - *Pattern source:* All five competitors detect faces and closed eyes (Aftershoot flags, Narrative Eye Assessments, Optyx expression/blink scores — all verified). PhotoPicker's offline scoring is Laplacian sharpness + mean-luminance exposure only (scoring.py); no face code exists anywhere in the package, so a sharp shot of a client mid-blink wins the cull unless the optional paid Vision rerank runs.
+- [x] **[high/M] (features)** SHIPPED 2026-07-20 as `photopicker/faces.py` — superseded spec: Mike picked MediaPipe Face Mesh (Apache 2.0 pretrained landmark model) over the YuNet-plus-trained-classifier plan below, since MediaPipe's iris-refined landmarks support the Eye Aspect Ratio technique directly (no training data needed). Wired into `cull(..., face_gate=True)` / CLI `--faces` (opt-in, not a hard quality-gate reject — a 0.4x score penalty). Face-crop strip / eye badges in the focus view UI is still open as a follow-up, not done today.
+  - *Original pattern source:* All five competitors detect faces and closed eyes (Aftershoot flags, Narrative Eye Assessments, Optyx expression/blink scores — all verified). PhotoPicker's offline scoring is Laplacian sharpness + mean-luminance exposure only (scoring.py); no face code exists anywhere in the package, so a sharp shot of a client mid-blink wins the cull unless the optional paid Vision rerank runs.
 - [ ] **[high/M] (features)** Corrected spec: this is NOT just surfacing existing data — dedup_perceptual must return a cluster map, threaded through CullResult and Session (new plumbing, hence M). Then render a '+N similar' chip on clustered keepers that expands to a side-by-side compare row with one-key swap-pick.
   - *Pattern source:* Aftershoot Survey Mode, Narrative Scenes View, and Optyx Autogroup (all verified) let users see a burst side-by-side and swap the pick. PhotoPicker's dedup_perceptual keeps the highest-scored frame per cluster and dumps the rest into a flat near-duplicate reject list — cluster membership is thrown away, so the user can never swap in the better expression.
 - [ ] **[medium/S] (trust)** The web UI already persists every K/X decision against pipeline picks in .photopicker-session.json (verified in webui.py). Print an override-rate line at export ('kept 27/30 picks — 10% override') plus a small cross-session aggregation script; publish the measured number in the README after a few real Aries/Big7 shoots.

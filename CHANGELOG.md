@@ -8,6 +8,18 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Face + closed-eye detection (opt-in), `photopicker/faces.py`.**
+  `face_eye_score()` detects faces and scores eye-open/closed state using
+  MediaPipe Face Mesh (Apache License 2.0, pinned `mediapipe==0.10.21`) and
+  the published Eye Aspect Ratio (EAR) technique against its iris-refined
+  landmarks — no training or labeled data needed. `cull(..., face_gate=True)`
+  / CLI `--faces` multiplies a photo's composite score by `0.4` when the
+  worst detected face's eyes are below the standard EAR 0.2 blink threshold;
+  photos with no face are unaffected. **Off by default** — new `[faces]`
+  extra (`pip install "photopicker[faces]"`), no behavior change for
+  existing callers/profiles unless explicitly enabled. 7 new tests in
+  `tests/test_faces.py`, including a culler-ranking integration test.
+  **398/398 green, ruff-clean.**
 - **Burst similarity / keeper swap in the web UI.** `dedup_perceptual_clusters()`
   (new `photopicker/dedup.py` function) keeps `dedup_perceptual`'s exact
   keep-list but also returns which near-duplicate frames lost to each winner.

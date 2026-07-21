@@ -39,11 +39,11 @@ Offline numbers from a typical dev laptop (Windows, py3.10). Reproduce with
 
 ## Stack
 
-Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · stdlib `http.server` (web UI) · CLIP via `transformers` (optional themed labels) · Claude Vision via `anthropic` (optional composition rerank)
+Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI) · stdlib `http.server` (web UI) · CLIP via `transformers` (optional themed labels) · Claude Vision via `anthropic` (optional composition rerank) · MediaPipe Face Mesh (optional face/closed-eye down-rank, Apache 2.0)
 
 ## Status
 
-**v0.14.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export + XMP ratings + override-rate metric. **375 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
+**v0.14.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export + XMP ratings + override-rate metric + opt-in face/closed-eye down-rank. **398 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
 
 ## Quick start — cull a shoot
 
@@ -98,6 +98,7 @@ The UI:
 | `--sharpness N` | Reject frames below this Laplacian variance (default 60) |
 | `--min-long-edge N` | Reject frames whose longer edge is < N pixels (default 800) |
 | `--json-out` | Print the result as JSON instead of a summary |
+| `--faces / --no-faces` | Down-rank photos where the worst detected face has closed eyes (off by default — see "Face + closed-eye detection" below) |
 
 ## Install
 
@@ -108,8 +109,38 @@ from a clone:
 pip install -e .              # core (cull + profiles) — dep-light, no torch
 pip install -e ".[clip]"      # add CLIP semantic labels for themed profiles
 pip install -e ".[vision]"    # add Claude Vision rerank for `--prompt`
+pip install -e ".[faces]"     # add MediaPipe face/closed-eye down-rank for `--faces`
 pip install -e ".[dev]"       # pytest + coverage + ruff
 ```
+
+## Face + closed-eye detection
+
+Opt-in signal for the general-purpose cull (`photopicker-cull ... --faces`,
+or `cull(..., face_gate=True)` in code): detects faces and down-ranks a photo
+if the worst detected face has closed eyes. **Off by default** — enabling it
+never changes behavior for existing profiles/shoots unless you explicitly
+pass the flag.
+
+- **Model:** [MediaPipe Face Mesh](https://github.com/google/mediapipe)
+  (Google), pinned `mediapipe==0.10.21` — **Apache License 2.0**, no
+  research-only or non-commercial restriction, verified against the package's
+  own `METADATA`/`LICENSE` at integration time. `mediapipe>=0.10.22` removed
+  the offline legacy API this integration depends on in favor of a Tasks API
+  that downloads model weights from Google's servers at runtime; 0.10.21
+  ships the `.tflite` face-landmark model inside the wheel, so detection
+  stays fully offline like the rest of this pipeline.
+- **How it works:** the published Eye Aspect Ratio (EAR) technique
+  (Soukupova & Cech, 2016) computed from MediaPipe's iris-refined landmarks —
+  no training, no labeled dataset. A photo with no face scores neutral
+  (never penalized for lacking a person); a photo with a face whose EAR is
+  below the standard 0.2 blink threshold gets its composite score multiplied
+  by `0.4` before ranking.
+- **Enable:** `pip install "photopicker[faces]"`, then `--faces` on
+  `photopicker-cull`, or `face_eye_score(path)` / `cull(..., face_gate=True)`
+  from `photopicker.faces` in code.
+- **Scope:** face + eye-open/closed only — not face recognition/identity, and
+  not (yet) wired into the themed `aries`/`big7`/`default`/`aries-gallery`
+  profiles, just the general `cull()` pipeline behind `photopicker-cull`.
 
 `build.sh` / `build.bat` set the core install up from a clean clone. `run.sh cull ./shoot` is the one-liner operator target.
 
@@ -182,7 +213,7 @@ See `photopicker/profiles/aries.py` as the reference.
 ```bash
 pip install -e ".[dev]"
 ruff check .
-pytest                        # 375 tests, ~40s
+pytest                        # 398 tests, ~40s (7 face-detection tests skip without [faces])
 pytest --cov=photopicker
 ```
 
