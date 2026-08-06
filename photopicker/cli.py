@@ -330,7 +330,12 @@ def main(
         classifier = CachingClassifier(ClipClassifier(), cache_path)
     else:
         classifier = None
-    result = pick_photos(folder, profile, classifier=classifier)
+    try:
+        result = pick_photos(folder, profile, classifier=classifier)
+    except ImportError as exc:
+        # Missing optional extra (e.g. [clip]) — human message, not a traceback.
+        click.echo(str(exc), err=True)
+        sys.exit(1)
 
     if dry_run:
         click.echo("[dry-run] CLIP skipped — pick shown below is StubClassifier-uniform.")

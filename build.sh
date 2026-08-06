@@ -61,23 +61,30 @@ python_setup() {
   if [[ ! -d .venv ]]; then
     python3 -m venv .venv
   fi
-  # shellcheck disable=SC1091
-  source .venv/bin/activate
+  # Windows (Git Bash) venvs use Scripts/, Unix venvs use bin/.
+  if [[ -f .venv/Scripts/activate ]]; then
+    # shellcheck disable=SC1091
+    source .venv/Scripts/activate
+  else
+    # shellcheck disable=SC1091
+    source .venv/bin/activate
+  fi
 
+  # `python -m pip` (not bare `pip`) — Windows can't replace a running pip.exe.
   log "Upgrading pip"
-  pip install --quiet --upgrade pip
+  python -m pip install --quiet --upgrade pip
 
   if [[ -f requirements.txt ]]; then
     log "Installing requirements.txt"
-    pip install --quiet -r requirements.txt
+    python -m pip install --quiet -r requirements.txt
   fi
   if [[ -f requirements-dev.txt ]]; then
     log "Installing requirements-dev.txt"
-    pip install --quiet -r requirements-dev.txt
+    python -m pip install --quiet -r requirements-dev.txt
   fi
   if [[ -f pyproject.toml ]]; then
     log "Installing project (editable) from pyproject.toml"
-    pip install --quiet -e .
+    python -m pip install --quiet -e .
   fi
 }
 

@@ -8,6 +8,12 @@ from PIL import Image
 
 DEFAULT_BATCH_SIZE = 32
 
+# Mirrors vision.py's missing-extra message so every optional dep fails the same way.
+CLIP_INSTALL_HINT = (
+    "CLIP semantic labels need `pip install photopicker[clip]`. "
+    "Install it, or pass --dry-run (StubClassifier in code) to skip CLIP."
+)
+
 
 class Classifier(Protocol):
     def score(self, image_path: Path, labels: list[str]) -> dict[str, float]:
@@ -50,7 +56,10 @@ class ClipClassifier:
     def _load(self) -> None:
         if self._model is not None:
             return
-        from transformers import CLIPModel, CLIPProcessor
+        try:
+            from transformers import CLIPModel, CLIPProcessor
+        except ImportError as exc:
+            raise ImportError(CLIP_INSTALL_HINT) from exc
 
         self._model = CLIPModel.from_pretrained(self._model_name)
         self._processor = CLIPProcessor.from_pretrained(self._model_name)
@@ -62,7 +71,10 @@ class ClipClassifier:
     def score_batch(
         self, image_paths: list[Path], labels: list[str]
     ) -> dict[Path, dict[str, float]]:
-        import torch
+        try:
+            import torch
+        except ImportError as exc:
+            raise ImportError(CLIP_INSTALL_HINT) from exc
 
         self._load()
         assert self._model is not None and self._processor is not None
