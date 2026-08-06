@@ -54,6 +54,13 @@ python demo/seed.py                       # 40 synthetic test photos, no camera 
 photopicker-cull demo/shoot --top 10      # Opens the web UI at http://127.0.0.1:8765
 ```
 
+![Cull grid on the synthetic demo shoot: 40 frames culled to the top 10, with LED keep/reject/undecided counters, filter chips, per-frame quality scores, and "+3 similar" burst-cluster badges](docs/img/cull-grid.jpg)
+
+![Focus view of one keeper from the demo shoot: the full-size frame above the "why" panel — quality 70, top 10% of this shoot](docs/img/cull-focus.jpg)
+
+*Real captures of the web UI reviewing `demo/shoot` — the synthetic frames
+`demo/seed.py` generates (fake landscapes, real pipeline).*
+
 Real-world use:
 
 ```bash

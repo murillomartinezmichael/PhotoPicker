@@ -1,5 +1,59 @@
 # PhotoPicker TODO
 
+## UPGRADE LANE 2026-08-05→06 (audit-born fixes — this lane made NO commits, NO pushes)
+
+**ANOMALY — read first.** Mid-session at 21:49 EDT, an outside actor (committer
+`murillomartinezmichael`, i.e. the default local identity — not this lane) created
+branch `agent/dev-workflow-clip-errors-20260805`, committed this lane's then-current
+8-file WIP as `7bcbb7e "Harden dev workflow and optional CLIP errors"`, and pushed
+it to origin. The repo is now ON that branch. This lane's contract was working-tree
+only; it made zero commits/pushes. `CONTENT.md`'s 2026-08-03 IG edit is still
+uncommitted and untouched, as required. Decide: PR/merge that branch, or move the
+commit back onto main — nothing here assumes either.
+
+**In `7bcbb7e` (this lane's work, committed by the outside actor):**
+- Makefile rewritten SiteAudit-style — every target calls `.venv` python directly;
+  the four phantom `scripts/*.sh` references are gone. `test-unit`/`test-integration`/
+  `test-e2e` and `deploy` targets deleted (no test tiers exist — one pytest suite;
+  no deploy pipeline exists — PyPI publish is manual per `PUBLISHING.md`). New `seed`
+  target; `clean` no longer nukes `.venv`/`dist` (dist holds the queued 0.14.0 wheels).
+  False header claim ("stay in sync with scripts/") removed.
+- `build.sh` now works on Windows Git Bash: venv activate handles `Scripts/` layout;
+  pip upgraded via `python -m pip` (bare `pip` can't replace its own exe on Windows).
+- Friendly missing-extra error: `classifier.py` wraps its torch/transformers imports
+  → `ImportError("CLIP semantic labels need \`pip install photopicker[clip]\`...")`
+  (extra verified: `[clip]` = torch+transformers; `[vision]` = anthropic only), and
+  `cli.py` catches ImportError around `pick_photos` → one-line stderr + exit 1.
+  3 new tests (2 classifier, 1 CLI).
+- `STATUS.md` version line corrected (0.14.0 committed at `49fd7cd` 2026-07-20).
+- `CONTRIBUTING.md` lint/test step updated to match the real Makefile.
+
+**Still uncommitted (working tree, this lane, on the same branch):**
+- `demo/seed.py`: synthetic frames now look like photos (fake landscapes: gradient
+  sky/ground, sun, silhouettes) instead of checkerboard test patterns that read as
+  "images failed to load" in screenshots. Deterministic; pipeline properties kept:
+  40 frames → 10 keepers, 9 "+3 similar" clusters, 3 blurry rejects (verified live).
+- `README.md`: two real UI screenshots embedded after Quick start —
+  `docs/img/cull-grid.jpg` + `docs/img/cull-focus.jpg` (~120 KB each, honest alt
+  text). Captured headless (puppeteer-core + system Chrome) off the README's own
+  demo path; server booted via `webui.serve(open_browser=False)`.
+
+**Verified (real runs, this box):** full suite `make test` → **401 passed, 90% cov**
+(baseline 398/90%); `make help/build/seed/run/lint` executed with output shown
+(`run` proven via `ARGS="--no-serve --json-out"`); `make fmt`/`make clean` proven on
+a scratch copy — running them in-tree would reformat 37 files (repo isn't
+ruff-format-clean; CI only enforces `ruff check`) / delete artifacts. ImportError
+path exercised in the venv: `photopicker --folder demo/shoot --profile aries` →
+prints the install hint, exit 1, no traceback. `ruff check .` clean.
+
+**Machine note:** GNU make 4.4.1 was missing on this box; installed via
+`winget install ezwinports.make` (user scope) — required to prove any target.
+
+**Next action (60-second cold start):** decide the fate of pushed branch
+`agent/dev-workflow-clip-errors-20260805` (PR it or cherry `7bcbb7e` to main), then
+review + commit the uncommitted README/seed/docs-img changes on the same call.
+`make test` from repo root re-proves everything.
+
 ## SHIPPED this session (2026-07-20, fleet re-audit)
 
 - **Finished the burst-similarity/keeper-swap feature left dirty+broken by
