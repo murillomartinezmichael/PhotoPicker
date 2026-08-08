@@ -2,7 +2,7 @@
 
 **One-liner:** Cull-first photo utility — offline dedup + quality gate + optional Claude Vision rerank, local web UI for K/X review, export with manifest. Reusable library API (`pick_photos`, `cull`) still shipped.
 
-**Version:** 0.14.0 (uncommitted; v0.12 = `fef41dc` committed 2026-07-05; v0.13 + v0.14 diff still local).
+**Version:** 0.14.0 (committed — `49fd7cd`, 2026-07-20; PyPI publish still queued, see `PENDING_MANUAL.md`).
 **Ladder position:** **RUNG 6 UPGRADE** landed (live cull progress in web UI). Next: RUNG 7 ENVISION (CockpitCloud fleet-preview panel + SiteGuide handoff format — see CHANGELOG "Envisioned").
 
 ## Ladder progress log

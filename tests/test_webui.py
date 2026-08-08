@@ -17,6 +17,7 @@ from photopicker.webui import (
     SessionStore,
     _build_export_manifest,
     _load_session_from_disk,
+    _override_stats,
     build_session,
 )
 
@@ -157,6 +158,30 @@ def test_build_session_populates_capture_time_when_present(tmp_path: Path):
     assert session.candidates[0].capture_time is None
 
 
+def test_build_session_fills_similar_from_clusters(tmp_path: Path):
+    winner = _make(tmp_path, "winner.png", 1)
+    loser_a = _make(tmp_path, "loser_a.png", 2)
+    loser_b = _make(tmp_path, "loser_b.png", 3)
+
+    session = build_session(
+        source_folder=tmp_path,
+        keepers=[winner],
+        scores={winner: 0.9, loser_a: 0.6, loser_b: 0.4},
+        clusters={winner: [loser_a, loser_b]},
+    )
+
+    similar = session.candidates[0].similar
+    assert [s["filename"] for s in similar] == ["loser_a.png", "loser_b.png"]
+    assert similar[0]["score"] == pytest.approx(0.6)
+    assert similar[1]["score"] == pytest.approx(0.4)
+
+
+def test_build_session_no_clusters_leaves_similar_empty(tmp_path: Path):
+    keeper = _make(tmp_path, "solo.png", 1)
+    session = build_session(source_folder=tmp_path, keepers=[keeper], scores={keeper: 0.5})
+    assert session.candidates[0].similar == []
+
+
 def test_build_export_manifest_shape(tmp_path: Path):
     session = Session(
         source_folder=str(tmp_path),
@@ -197,6 +222,64 @@ def test_load_session_from_disk_handles_corrupt_json(tmp_path: Path):
     candidates = [Candidate(idx=0, path="/x", filename="x")]
     got = _load_session_from_disk(sf, candidates)
     assert got == candidates
+
+
+# --- _override_stats ---------------------------------------------------------
+
+
+def _cand(idx: int, decision: str = "", rejected_reason: str = "") -> Candidate:
+    return Candidate(
+        idx=idx,
+        path=f"/p{idx}",
+        filename=f"p{idx}.jpg",
+        decision=decision,
+        rejected_reason=rejected_reason,
+    )
+
+
+def test_override_stats_counts_rejected_picks_as_overrides():
+    session = Session(
+        source_folder="/s",
+        candidates=[
+            _cand(0, "keep"),
+            _cand(1, "keep"),
+            _cand(2, "reject"),
+            _cand(3),  # undecided counts as kept — export treats it that way
+        ],
+    )
+    stats = _override_stats(session)
+    assert stats == {
+        "picks": 4,
+        "kept": 3,
+        "overridden": 1,
+        "rate": 0.25,
+        "rescued": 0,
+        "line": "kept 3/4 picks — 25% override",
+    }
+
+
+def test_override_stats_counts_rescued_pipeline_rejects():
+    session = Session(
+        source_folder="/s",
+        candidates=[
+            _cand(0, "keep"),
+            _cand(1, "keep", rejected_reason="blurry"),
+            _cand(2, "", rejected_reason="duplicates"),
+        ],
+    )
+    stats = _override_stats(session)
+    assert stats["picks"] == 1
+    assert stats["overridden"] == 0
+    assert stats["rescued"] == 1
+    assert "rescued 1 pipeline reject" in stats["line"]
+
+
+def test_override_stats_none_when_no_picks():
+    session = Session(
+        source_folder="/s",
+        candidates=[_cand(0, rejected_reason="blurry")],
+    )
+    assert _override_stats(session) is None
 
 
 # --- SessionStore ------------------------------------------------------------
@@ -286,6 +369,75 @@ def test_store_undecided_keepers_includes_undecided(tmp_path: Path):
     assert set(keepers) == {paths[0], paths[2]}
 
 
+def _store_with_burst(tmp_path: Path):
+    winner = _make(tmp_path, "winner.png", 1)
+    loser = _make(tmp_path, "loser.png", 2)
+    session = build_session(
+        source_folder=tmp_path,
+        keepers=[winner],
+        scores={winner: 0.9, loser: 0.6},
+        clusters={winner: [loser]},
+    )
+    store = SessionStore(session=session, session_path=tmp_path / ".photopicker-session.json")
+    return store, winner, loser
+
+
+def test_store_swap_promotes_member_and_swaps_similar_back(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+
+    store.swap(0, 0)
+
+    c = store.get().candidates[0]
+    assert c.path == str(loser)
+    assert c.filename == "loser.png"
+    assert c.score == pytest.approx(0.6)
+    # The old pick is now the thing you'd swap back in.
+    assert c.similar[0]["path"] == str(winner)
+    assert c.similar[0]["score"] == pytest.approx(0.9)
+
+
+def test_store_swap_clears_ai_fields(tmp_path: Path):
+    winner = _make(tmp_path, "winner.png", 1)
+    loser = _make(tmp_path, "loser.png", 2)
+    session = build_session(
+        source_folder=tmp_path,
+        keepers=[winner],
+        scores={winner: 0.9, loser: 0.6},
+        ai_scores={winner: (80, "warm light")},
+        clusters={winner: [loser]},
+    )
+    store = SessionStore(session=session, session_path=tmp_path / ".photopicker-session.json")
+
+    store.swap(0, 0)
+
+    c = store.get().candidates[0]
+    assert c.ai_score is None
+    assert c.ai_reason == ""
+
+
+def test_store_swap_is_reversible(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+
+    store.swap(0, 0)
+    store.swap(0, 0)
+
+    c = store.get().candidates[0]
+    assert c.path == str(winner)
+    assert c.similar[0]["path"] == str(loser)
+
+
+def test_store_swap_bad_idx_raises(tmp_path: Path):
+    store, _, _ = _store_with_burst(tmp_path)
+    with pytest.raises(IndexError):
+        store.swap(99, 0)
+
+
+def test_store_swap_bad_member_raises(tmp_path: Path):
+    store, _, _ = _store_with_burst(tmp_path)
+    with pytest.raises(IndexError):
+        store.swap(0, 5)
+
+
 # --- HTTP server (integration) -----------------------------------------------
 
 
@@ -349,6 +501,37 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _reserve_ports(count: int, attempts: int = 20) -> tuple[int, list]:
+    """Bind `count` *consecutive* ports and return (base, sockets-you-must-close).
+
+    `_bind_with_fallback` walks port..port+tries-1, so a test about that walk needs
+    a contiguous run. Asking the OS for one free port and assuming the next few are
+    also free is what made these tests flaky — anything else on the box holding
+    base+2 blew up the setup, not the code under test. Here every port in the run is
+    one this test actually holds; if the run is broken up, drop it and try another.
+    """
+    import socket
+
+    for _ in range(attempts):
+        base = _free_port()
+        held = []
+        for offset in range(count):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                s.bind(("127.0.0.1", base + offset))
+                s.listen(1)
+            except OSError:
+                s.close()
+                break
+            held.append(s)
+        if len(held) == count:
+            return base, held
+        for s in held:
+            s.close()
+    # pragma: no cover — only when the box is unusually busy
+    pytest.skip(f"could not reserve {count} consecutive ports after {attempts} tries")
+
+
 @pytest.fixture
 def running_server(tmp_path: Path):
     store, paths = _fresh_store(tmp_path, n=4)
@@ -377,6 +560,16 @@ def test_http_root_returns_html(running_server):
     assert "text/html" in ctype
     assert b"photopicker" in body
     assert b"cull" in body
+
+
+def test_http_root_ships_focus_stat_block(running_server):
+    """The focus view carries the transparency stat block: composite score,
+    client-side percentile, the ai_reason line, and a culled-reason row for
+    pipeline rejects. Locked so a UI refactor can't silently drop them."""
+    base, _, _ = running_server
+    _, body, _ = _http_get(f"{base}/")
+    for marker in (b"focus-stats", b"focus-pct", b"focus-culled", b"focus-ai-reason", b"qualityPercentile"):
+        assert marker in body
 
 
 def test_http_photo_returns_jpeg_bytes(running_server):
@@ -435,6 +628,51 @@ def test_http_reset_clears_all(running_server):
         assert c.decision == ""
 
 
+@pytest.fixture
+def running_server_with_burst(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    port = _free_port()
+    _, shutdown = _start_server(store, port)
+    time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}", store, winner, loser
+    shutdown.stop()  # type: ignore[attr-defined]
+
+
+def test_http_swap_promotes_member(running_server_with_burst):
+    base, store, winner, loser = running_server_with_burst
+    status, payload = _http_post(f"{base}/swap", {"idx": 0, "member": 0})
+    assert status == 200
+    assert payload["ok"] is True
+    assert store.get().candidates[0].path == str(loser)
+    assert store.get().candidates[0].similar[0]["path"] == str(winner)
+
+
+def test_http_swap_bad_input_returns_400(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, _ = _http_post(f"{base}/swap", {"idx": "x", "member": 0})
+    assert status == 400
+
+
+def test_http_swap_out_of_range_returns_404(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, _ = _http_post(f"{base}/swap", {"idx": 0, "member": 99})
+    assert status == 404
+
+
+def test_http_photo_serves_similar_member(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, body, ctype = _http_get(f"{base}/photo/0?w=200&m=0")
+    assert status == 200
+    assert ctype.startswith("image/jpeg")
+    assert body[:3] == b"\xff\xd8\xff"
+
+
+def test_http_photo_similar_member_out_of_range_returns_404(running_server_with_burst):
+    base, _, _, _ = running_server_with_burst
+    status, _, _ = _http_get(f"{base}/photo/0?m=99")
+    assert status == 404
+
+
 def test_http_export_copies_keepers(tmp_path: Path, running_server):
     base, _, _ = running_server
     _http_post(f"{base}/decision", {"idx": 0, "decision": "keep"})
@@ -449,6 +687,8 @@ def test_http_export_copies_keepers(tmp_path: Path, running_server):
     assert payload["exported"] == 1
     assert target.exists()
     assert len(list(target.iterdir())) == 1
+    # Export reports the trust metric: 3 kept of 4 picks = 25% override.
+    assert payload["override"]["line"] == "kept 3/4 picks — 25% override"
 
 
 def test_http_export_include_undecided(tmp_path: Path, running_server):
@@ -509,50 +749,78 @@ def test_http_export_writes_manifest_when_flag_set(tmp_path: Path, running_serve
     manifest = json.loads(manifest_path.read_text())
     assert manifest["exported_count"] == 2
     assert len(manifest["picks"]) == 2
+    assert manifest["override"]["picks"] == 4
+
+
+def test_http_export_embeds_xmp_when_flag_set(tmp_path: Path):
+    from photopicker.xmp import XMP_MARKER
+
+    src = tmp_path / "src"
+    src.mkdir()
+    paths = []
+    for i in range(2):
+        p = src / f"p{i}.jpg"
+        arr = np.full((600, 600, 3), 128, dtype=np.uint8)
+        arr[i * 100 : i * 100 + 100, :] = 255
+        Image.fromarray(arr).save(p)
+        paths.append(p)
+    session = build_session(source_folder=src, keepers=paths)
+    store = SessionStore(session=session, session_path=src / ".photopicker-session.json")
+    port = _free_port()
+    _, shutdown = _start_server(store, port)
+    time.sleep(0.05)
+    try:
+        base = f"http://127.0.0.1:{port}"
+        _http_post(f"{base}/decision", {"idx": 0, "decision": "keep"})
+        _http_post(f"{base}/decision", {"idx": 1, "decision": "keep"})
+        target = tmp_path / "xmp_export"
+        status, payload = _http_post(
+            f"{base}/export", {"target": str(target), "xmp": True}
+        )
+        assert status == 200
+        assert payload["exported"] == 2
+        assert payload["xmp_embedded"] == 2
+        for copy in target.glob("*.jpg"):
+            assert XMP_MARKER in copy.read_bytes()
+        # Originals in the source folder stay clean.
+        for original in paths:
+            assert XMP_MARKER not in original.read_bytes()
+    finally:
+        shutdown.stop()  # type: ignore[attr-defined]
 
 
 def test_bind_with_fallback_uses_next_port_when_first_taken(tmp_path):
     """If port N is bound, `_bind_with_fallback` should hand back N+1..N+tries."""
-    import socket
-
     from photopicker.webui import _bind_with_fallback, make_handler
 
     store, _ = _fresh_store(tmp_path, n=1)
     from photopicker.webui import _ThumbCache
     handler_cls = make_handler(store, _ThumbCache(), threading.Event())
 
-    # Grab a specific port so we know the fallback target.
-    base_port = _free_port()
-    blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-    blocker.bind(("127.0.0.1", base_port))
-    blocker.listen(1)
+    # Hold both ports, then free N+1 — so the fallback target is one this test just
+    # proved it can bind, rather than one we hoped was free.
+    base_port, blockers = _reserve_ports(2)
+    blockers.pop().close()
     try:
         httpd, actual = _bind_with_fallback(handler_cls, "127.0.0.1", base_port, tries=5)
         assert actual == base_port + 1
         httpd.server_close()
     finally:
-        blocker.close()
+        for s in blockers:
+            s.close()
 
 
 def test_bind_with_fallback_raises_when_range_exhausted(tmp_path):
     """When every port in the range is taken, we should raise OSError."""
-    import socket
-
     from photopicker.webui import _bind_with_fallback, make_handler
 
     store, _ = _fresh_store(tmp_path, n=1)
     from photopicker.webui import _ThumbCache
     handler_cls = make_handler(store, _ThumbCache(), threading.Event())
 
-    base_port = _free_port()
-    blockers = []
+    # `tries=3` walks port..port+3 — four ports, so hold four.
+    base_port, blockers = _reserve_ports(4)
     try:
-        for offset in range(4):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.bind(("127.0.0.1", base_port + offset))
-            s.listen(1)
-            blockers.append(s)
         with pytest.raises(OSError):
             _bind_with_fallback(handler_cls, "127.0.0.1", base_port, tries=3)
     finally:

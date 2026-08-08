@@ -4,16 +4,33 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from photopicker.classifier import StubClassifier
 from photopicker.profiles import aries_gallery as aries_gallery_module
 from photopicker.profiles import get_profile, list_profiles
-from photopicker.profiles.aries import STAGE_LABELS, WARMTH_LABEL, WARMTH_WEIGHT, _combined
+from photopicker.profiles.aesthetics import MAX_BONUS
+from photopicker.profiles.aries import (
+    AMBIENT_LIGHTS_LABEL,
+    AMBIENT_LIGHTS_WEIGHT,
+    FURNISHED_LABEL,
+    FURNISHED_WEIGHT,
+    GREENERY_LABEL,
+    GREENERY_WEIGHT,
+    STAGE_LABELS,
+    WARMTH_LABEL,
+    WARMTH_WEIGHT,
+    _combined,
+)
 from photopicker.profiles.big7 import CATEGORY_LABELS as BIG7_CATEGORY_LABELS
 from photopicker.profiles.big7 import (
     CLEAN_LINES_LABEL,
     CLEAN_LINES_WEIGHT,
+    FINISHED_RESULT_LABEL,
+    FINISHED_RESULT_WEIGHT,
+    HERO_EXTERIOR_LABEL,
+    HERO_EXTERIOR_WEIGHT,
     PEOPLE_LABEL,
     PEOPLE_WEIGHT,
 )
@@ -198,7 +215,12 @@ def test_aries_uses_classifier_with_correct_labels(folder_of_images: Path):
     classifier = StubClassifier()
     get_profile("aries").select(paths, classifier)
     assert len(classifier.calls) == len(paths)
-    expected = set(STAGE_LABELS.values()) | {WARMTH_LABEL}
+    expected = set(STAGE_LABELS.values()) | {
+        WARMTH_LABEL,
+        GREENERY_LABEL,
+        AMBIENT_LIGHTS_LABEL,
+        FURNISHED_LABEL,
+    }
     for _, labels in classifier.calls:
         assert set(labels) == expected
 
@@ -260,6 +282,263 @@ def test_aries_warmth_boosts_others_ranking(tmp_path: Path):
     assert others.index(warmth_ranked[0]) < others.index(warmth_ranked[-1])
 
 
+def test_aries_combined_stacks_greenery_bonus_additively():
+    # Greenery alone applies its own weight.
+    assert _combined(quality=1.0, warmth=0.0, greenery=1.0) == 1.0 + GREENERY_WEIGHT
+    # Warmth + greenery stack additively inside the multiplier.
+    expected = 1.0 * (1.0 + WARMTH_WEIGHT + GREENERY_WEIGHT)
+    assert _combined(quality=1.0, warmth=1.0, greenery=1.0) == expected
+    # Greenery defaults to 0 so pre-existing callers stay warmth-only (back-compat).
+    assert _combined(quality=1.0, warmth=0.4) == _combined(
+        quality=1.0, warmth=0.4, greenery=0.0
+    )
+
+
+def test_aries_greenery_bonus_ranks_planted_deck_above_bare(tmp_path: Path):
+    """Two 'after' shots, equal quality + equal warmth -> the greenery one wins.
+
+    Uses uniform-quality fixtures so greenery is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=10)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.95,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    assert sel.categorized["after"][0] == paths[1], (
+        "shot with lush landscaping should outrank equal-quality bare shot"
+    )
+
+
+def test_aries_warmth_dominates_greenery(tmp_path: Path):
+    """When warmth and greenery fire on different shots, warmth wins.
+
+    Locks the design intent: golden-hour is the primary aesthetic signal,
+    greenery is a secondary bonus. If someone rebalances the weights and
+    inverts this ordering, the test fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    # paths[0]: warmth only
+    # paths[1]: greenery only
+    # everyone else: neither
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.9,
+        GREENERY_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.9,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    # Only one photo lands in the "after" slot (aries picks 1/stage), so the
+    # warmth-only shot should claim it and the greenery shot flows to "others".
+    assert sel.categorized["after"][0] == paths[0], (
+        "warmth-only shot should outrank a greenery-only shot within the same stage"
+    )
+    assert paths[1] in sel.categorized["others"]
+
+
+def test_aries_combined_stacks_ambient_bonus_additively():
+    # Ambient alone applies its own weight.
+    assert _combined(quality=1.0, warmth=0.0, greenery=0.0, ambient=1.0) == (
+        1.0 + AMBIENT_LIGHTS_WEIGHT
+    )
+    # Three bonuses at full probability earn 0.85x — over the ceiling, so the
+    # stack saturates there instead of running away with the ranking.
+    assert _combined(quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0) == pytest.approx(
+        1.0 + MAX_BONUS
+    )
+    # Below the ceiling they still stack plain-additively.
+    assert _combined(quality=1.0, warmth=0.5, greenery=0.5, ambient=0.5) == pytest.approx(
+        1.0 + 0.5 * (WARMTH_WEIGHT + GREENERY_WEIGHT + AMBIENT_LIGHTS_WEIGHT)
+    )
+    # Ambient defaults to 0 for callers that don't pass it (back-compat).
+    assert _combined(quality=1.0, warmth=0.4, greenery=0.2) == _combined(
+        quality=1.0, warmth=0.4, greenery=0.2, ambient=0.0
+    )
+
+
+def test_aries_ambient_bonus_ranks_lit_evening_scene_above_bare(tmp_path: Path):
+    """Two 'after' shots, equal quality + no warmth + no greenery -> the string-lit one wins.
+
+    Uses uniform-quality fixtures so ambient lighting is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=10)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+        AMBIENT_LIGHTS_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+        AMBIENT_LIGHTS_LABEL: 0.95,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+            AMBIENT_LIGHTS_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    assert sel.categorized["after"][0] == paths[1], (
+        "string-lit evening shot should outrank equal-quality bare shot"
+    )
+
+
+def test_aries_greenery_dominates_ambient(tmp_path: Path):
+    """Greenery (0.2) outranks ambient (0.15) when they fire on different shots.
+
+    Locks the weight ordering: WARMTH > GREENERY > AMBIENT. If someone flips
+    ambient above greenery, this test fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    # paths[0]: greenery only
+    # paths[1]: ambient only
+    # others: neither
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.9,
+        AMBIENT_LIGHTS_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        WARMTH_LABEL: 0.0,
+        GREENERY_LABEL: 0.0,
+        AMBIENT_LIGHTS_LABEL: 0.9,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            WARMTH_LABEL: 0.0,
+            GREENERY_LABEL: 0.0,
+            AMBIENT_LIGHTS_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    # Only one photo lands in the "after" slot, so greenery shot claims it and
+    # the ambient shot flows to "others".
+    assert sel.categorized["after"][0] == paths[0], (
+        "greenery-only shot should outrank an ambient-only shot within the same stage"
+    )
+    assert paths[1] in sel.categorized["others"]
+
+
+def test_aries_combined_stacks_furnished_bonus_additively():
+    # Furnished alone applies its own weight.
+    assert _combined(quality=1.0, warmth=0.0, furnished=1.0) == 1.0 + FURNISHED_WEIGHT
+    # All four at once (0.97x earned) saturates at the ceiling — adding the
+    # furnished rule did not raise the top of the scale for the photos already there.
+    assert _combined(
+        quality=1.0, warmth=1.0, greenery=1.0, ambient=1.0, furnished=1.0
+    ) == pytest.approx(1.0 + MAX_BONUS)
+    # Furnished defaults to 0 for callers that don't pass it (back-compat).
+    assert _combined(quality=1.0, warmth=0.4, ambient=0.2) == _combined(
+        quality=1.0, warmth=0.4, ambient=0.2, furnished=0.0
+    )
+
+
+def test_aries_furnished_bonus_ranks_staged_deck_above_empty(tmp_path: Path):
+    """Two 'after' shots, identical on every other rule -> the staged one wins.
+
+    Uniform-quality fixtures, so outdoor furniture is the only differentiator.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=10)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    scores[paths[0].name] = {**_stage_probs("after"), FURNISHED_LABEL: 0.0}
+    scores[paths[1].name] = {**_stage_probs("after"), FURNISHED_LABEL: 0.95}
+    for p in paths[2:]:
+        scores[p.name] = {**_stage_probs("before", confidence=0.4), FURNISHED_LABEL: 0.0}
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    assert sel.categorized["after"][0] == paths[1], (
+        "deck staged with furniture should outrank an equal-quality empty deck"
+    )
+
+
+def test_aries_ambient_dominates_furnished(tmp_path: Path):
+    """Ambient (0.15) outranks furnished (0.12) when they fire on different shots.
+
+    Locks the full weight ordering: WARMTH > GREENERY > AMBIENT > FURNISHED.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    scores = {}
+    # paths[0]: ambient only, paths[1]: furnished only, others: neither.
+    scores[paths[0].name] = {
+        **_stage_probs("after"),
+        AMBIENT_LIGHTS_LABEL: 0.9,
+        FURNISHED_LABEL: 0.0,
+    }
+    scores[paths[1].name] = {
+        **_stage_probs("after"),
+        AMBIENT_LIGHTS_LABEL: 0.0,
+        FURNISHED_LABEL: 0.9,
+    }
+    for p in paths[2:]:
+        scores[p.name] = {
+            **_stage_probs("before", confidence=0.4),
+            AMBIENT_LIGHTS_LABEL: 0.0,
+            FURNISHED_LABEL: 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("aries").select(paths, classifier)
+
+    # Aries picks one photo per stage, so the ambient shot claims "after" and the
+    # furnished shot flows to "others".
+    assert sel.categorized["after"][0] == paths[0], (
+        "ambient-only shot should outrank a furnished-only shot within the same stage"
+    )
+    assert paths[1] in sel.categorized["others"]
+
+
 def test_default_profile_returns_top_n(folder_of_images: Path):
     paths = sorted(folder_of_images.iterdir())
     sel = get_profile("default").select(paths, StubClassifier())
@@ -298,9 +577,14 @@ def test_big7_combined_scales_quality_by_people_bonus():
 def test_big7_combined_stacks_clean_lines_bonus_additively():
     # Clean-lines alone applies its own weight.
     assert _big7_combined(quality=1.0, people=0.0, clean_lines=1.0) == 1.0 + CLEAN_LINES_WEIGHT
-    # People + clean-lines stack additively inside the multiplier.
-    expected = 1.0 * (1.0 + PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT)
-    assert _big7_combined(quality=1.0, people=1.0, clean_lines=1.0) == expected
+    # People + clean-lines at full probability earn 0.8x — over the ceiling.
+    assert _big7_combined(quality=1.0, people=1.0, clean_lines=1.0) == pytest.approx(
+        1.0 + MAX_BONUS
+    )
+    # Below the ceiling they stack plain-additively.
+    assert _big7_combined(quality=1.0, people=0.5, clean_lines=0.5) == pytest.approx(
+        1.0 + 0.5 * (PEOPLE_WEIGHT + CLEAN_LINES_WEIGHT)
+    )
     # Clean-lines defaults to 0 for callers that don't pass it (back-compat).
     assert _big7_combined(quality=1.0, people=0.4) == _big7_combined(
         quality=1.0, people=0.4, clean_lines=0.0
@@ -395,6 +679,173 @@ def test_big7_people_bonus_dominates_clean_lines(tmp_path: Path):
     )
     assert sel.categorized["repair"][1] == paths[1], (
         "clean-lines shot should place second, ahead of shots with neither signal"
+    )
+
+
+def test_big7_combined_stacks_finished_result_bonus_additively():
+    # Finished alone applies its own weight.
+    assert _big7_combined(quality=1.0, people=0.0, clean_lines=0.0, finished=1.0) == (
+        1.0 + FINISHED_RESULT_WEIGHT
+    )
+    # All three at full probability earn 0.95x — saturated at the ceiling.
+    assert _big7_combined(
+        quality=1.0, people=1.0, clean_lines=1.0, finished=1.0
+    ) == pytest.approx(1.0 + MAX_BONUS)
+    # Finished defaults to 0 for callers that don't pass it (back-compat).
+    assert _big7_combined(quality=1.0, people=0.4, clean_lines=0.2) == _big7_combined(
+        quality=1.0, people=0.4, clean_lines=0.2, finished=0.0
+    )
+
+
+def test_big7_combined_stacks_hero_exterior_bonus_additively():
+    # Hero alone applies its own weight.
+    assert _big7_combined(
+        quality=1.0, people=0.0, clean_lines=0.0, finished=0.0, hero=1.0
+    ) == (1.0 + HERO_EXTERIOR_WEIGHT)
+    # All four at once (1.05x earned) saturates — the hero rule sharpens the
+    # tiebreak between top photos without inflating what a top photo can score.
+    assert _big7_combined(
+        quality=1.0, people=1.0, clean_lines=1.0, finished=1.0, hero=1.0
+    ) == pytest.approx(1.0 + MAX_BONUS)
+    # Hero defaults to 0 for callers that don't pass it (back-compat).
+    assert _big7_combined(
+        quality=1.0, people=0.4, clean_lines=0.2, finished=0.1
+    ) == _big7_combined(quality=1.0, people=0.4, clean_lines=0.2, finished=0.1, hero=0.0)
+
+
+def test_big7_hero_exterior_bonus_ranks_above_baseline(tmp_path: Path):
+    """Between equal-quality shots with no other signal, the one reading as a
+    hero-exterior curb-appeal frame outranks the baseline shots.
+
+    Locks the design intent that hero-exterior is a real signal — the
+    residential-GC money shot is worth a small bump on its own.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    # All 4 land in "build"; paths[2] reads as hero-exterior, others don't.
+    # No people, no clean-lines, no finished — hero is the only differentiator.
+    scores = {}
+    for i, p in enumerate(paths):
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.0,
+            FINISHED_RESULT_LABEL: 0.0,
+            HERO_EXTERIOR_LABEL: 0.9 if i == 2 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[2], (
+        "hero-exterior shot should outrank equal-quality shots with no signal"
+    )
+
+
+def test_big7_finished_result_dominates_hero_exterior(tmp_path: Path):
+    """Finished-result outranks hero-exterior when they fire on different shots.
+
+    Locks the weight ordering: FINISHED_RESULT (0.15) > HERO_EXTERIOR (0.1).
+    If someone flips the weights, this fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    scores = {}
+    for i, p in enumerate(paths):
+        # paths[0]: finished, not hero
+        # paths[1]: hero, not finished
+        # others: neither
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.0,
+            FINISHED_RESULT_LABEL: 0.9 if i == 0 else 0.0,
+            HERO_EXTERIOR_LABEL: 0.9 if i == 1 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[0], (
+        "finished-result shot should outrank a hero-exterior-only shot"
+    )
+    assert sel.categorized["build"][1] == paths[1], (
+        "hero-exterior shot should place second, ahead of shots with neither signal"
+    )
+
+
+def test_big7_finished_result_bonus_ranks_completed_above_debris(tmp_path: Path):
+    """Between two equal-quality shots with no crew and no clean-lines signal,
+    the one reading as 'finished' outranks the mid-repair shot.
+
+    Locks the design intent that finished-result is a real signal, small but
+    non-zero — sales/marketing shots skew toward completed work.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    # All 4 land in "build"; paths[2] reads as finished, others don't.
+    # No people and no clean-lines in any shot so finished is the only differentiator.
+    scores = {}
+    for i, p in enumerate(paths):
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.0,
+            FINISHED_RESULT_LABEL: 0.9 if i == 2 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[2], (
+        "finished-result shot should outrank equal-quality mid-repair shots"
+    )
+
+
+def test_big7_clean_lines_dominates_finished_result(tmp_path: Path):
+    """Clean-lines outranks finished-result when they fire on different shots.
+
+    Locks the weight ordering: CLEAN_LINES (0.3) > FINISHED_RESULT (0.15).
+    If someone flips the weights, this fails loudly.
+    """
+    folder = _uniform_checker_folder(tmp_path, count=4)
+    paths = sorted(folder.iterdir())
+    repair_label = BIG7_CATEGORY_LABELS["repair"]
+    build_label = BIG7_CATEGORY_LABELS["build"]
+
+    scores = {}
+    for i, p in enumerate(paths):
+        # paths[0]: clean lines, not finished
+        # paths[1]: finished, not clean lines
+        # others: neither
+        scores[p.name] = {
+            repair_label: 0.1,
+            build_label: 0.9,
+            PEOPLE_LABEL: 0.0,
+            CLEAN_LINES_LABEL: 0.9 if i == 0 else 0.0,
+            FINISHED_RESULT_LABEL: 0.9 if i == 1 else 0.0,
+        }
+
+    classifier = StubClassifier(scores=scores)
+    sel = get_profile("big7").select(paths, classifier)
+
+    assert sel.categorized["build"][0] == paths[0], (
+        "clean-lines shot should outrank a finished-only shot"
+    )
+    assert sel.categorized["build"][1] == paths[1], (
+        "finished-result shot should place second, ahead of shots with neither signal"
     )
 
 

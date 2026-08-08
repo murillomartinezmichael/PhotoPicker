@@ -25,10 +25,11 @@ If `build.sh` fails on a fresh clone, file an issue — that's a build-script bu
    - chores: `chore/short-name`
 2. Make your change. Follow `ENGINEERING_STANDARDS.md` § 2 (naming + comments).
 3. Add tests at the right tier (see `../docs/TESTING_STANDARDS.md`).
-4. Lint + test locally:
+4. Lint + test locally. The make targets call `.venv` directly, so install the
+   dev tools into it once (`.venv/Scripts/pip` on Windows): `pip install -e ".[dev]"`.
    ```bash
-   make lint
-   make test
+   make lint   # ruff check photopicker tests — same invocation as CI
+   make test   # full pytest suite + coverage (one suite; no unit/integration/e2e tiers)
    ```
 5. Open a PR using the template. Be specific in "How tested."
 6. Address review comments by pushing more commits — don't force-push during review.

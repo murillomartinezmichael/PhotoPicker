@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from .dedup import collapse_heic_jpg_twins, dedup_perceptual
+from .dedup import collapse_heic_jpg_twins, dedup_perceptual_clusters
 from .exif import get_capture_time
 from .quality_gate import filter_usable
 from .scoring import composite_score
@@ -42,6 +42,16 @@ class CullResult:
     scores: dict[Path, float]
     rejected: dict[str, list[Path]] = field(default_factory=dict)
     input_count: int = 0
+    # winner -> near-duplicate frames that lost to it (perceptual dedup). The
+    # frames themselves never enter `keepers`/`scores` — that contract is
+    # keepers-only. Their scores live in `all_scores` so a reviewer can still
+    # see them (burst compare / swap-the-pick) without the public result
+    # shape changing shape depending on whether a cull had bursts in it.
+    clusters: dict[Path, list[Path]] = field(default_factory=dict)
+    # Every scored survivor (pre quality-gate, pre top-N), keepers included.
+    # Lets consumers look up a cluster member's score without it being a
+    # "kept" photo.
+    all_scores: dict[Path, float] = field(default_factory=dict)
 
     @property
     def total_input(self) -> int:
@@ -85,16 +95,25 @@ def cull(
     min_long_edge: int = DEFAULT_MIN_LONG_EDGE,
     sort: str = "score",
     progress: Progress | None = None,
+    face_gate: bool = False,
 ) -> CullResult:
     """Cull `paths` down to the top `top_n` keepers.
 
     Progress callback signature: `progress(stage, done, total)`. Stages fire
-    in order: `"twin-collapse"`, `"scoring"`, `"dedup"`, `"quality-gate"`.
+    in order: `"twin-collapse"`, `"scoring"`, `"faces"` (only when
+    `face_gate=True`), `"dedup"`, `"quality-gate"`.
 
     `sort` selects the final keeper order (does not affect *which* photos win —
     that is always composite score). Options: `score` (default; best first),
     `capture-time` (EXIF, oldest first; falls back to filename when EXIF missing),
     `name` (filename ascending).
+
+    `face_gate` opt-in (default off): multiplies each photo's composite score
+    by `faces.face_eye_score()` so a closed-eye portrait ranks below an
+    otherwise-equal open-eye frame. Off by default so existing callers see no
+    behavior change; requires `pip install "photopicker[faces]"` when enabled
+    (raises `ImportError` with the install hint otherwise). Photos with no
+    detected face are unaffected (neutral 1.0 multiplier).
     """
     if sort not in SORT_MODES:
         raise ValueError(f"sort={sort!r} not one of {SORT_MODES}")
@@ -117,11 +136,21 @@ def cull(
         if progress and (i % 20 == 0 or i == len(twin_collapsed)):
             progress("scoring", i, len(twin_collapsed))
 
+    if face_gate:
+        from .faces import face_eye_score
+
+        if progress:
+            progress("faces", 0, len(twin_collapsed))
+        for i, p in enumerate(twin_collapsed, start=1):
+            scores[p] *= face_eye_score(p).score
+            if progress and (i % 20 == 0 or i == len(twin_collapsed)):
+                progress("faces", i, len(twin_collapsed))
+
     # Perceptual dedup on the score-sorted list: highest-scored wins its cluster.
     by_score_desc = sorted(twin_collapsed, key=lambda p: scores[p], reverse=True)
     if progress:
         progress("dedup", 0, len(by_score_desc))
-    deduped = dedup_perceptual(by_score_desc)
+    deduped, clusters = dedup_perceptual_clusters(by_score_desc)
     perceptual_dropped = [p for p in twin_collapsed if p not in set(deduped)]
     if progress:
         progress("dedup", len(by_score_desc), len(by_score_desc))
@@ -158,6 +187,8 @@ def cull(
             "blurry": blurry,
         },
         input_count=n,
+        clusters=clusters,
+        all_scores=scores,
     )
 
 
