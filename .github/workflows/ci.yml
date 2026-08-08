@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Cap runaway runs: normal matrix-leg runtime is ~1-2 min, but the
+    # 2026-08-06 hosted-runner acquisition outage burned 2x15m here.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +45,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:

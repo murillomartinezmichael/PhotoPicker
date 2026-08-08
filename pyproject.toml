@@ -51,7 +51,10 @@ faces = [
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.5",
+    # Pinned exact — CI-reproducibility receipt: unpinned ruff broke two
+    # fleet repos in one day (0.15.22-vs-0.16.1 drift). 0.15.20 is verified
+    # clean on this tree; bump deliberately, not via pip resolution.
+    "ruff==0.15.20",
 ]
 
 [project.scripts]

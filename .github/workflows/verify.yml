@@ -36,6 +36,9 @@ jobs:
   verify:
     name: standards
     runs-on: ubuntu-latest
+    # Cap runaway runs (normal runtime ~16s) — 2026-08-06 runner-acquisition
+    # outage burned 15m on sibling jobs; budget protection, no check change.
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7

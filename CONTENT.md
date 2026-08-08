@@ -23,3 +23,5 @@ Kept per master rules: capture "worth filming for TikTok" moments as they land.
 ## Followups (only after step 1 ships)
 
 - If the tool gets any pull: a "how it works" thread — dedup via perceptual hash, sharpness via Laplacian variance, one Claude Vision call per survivor. All boring, all fast.
+
+- `2026-08-03` — **Full IG short-form script drafted** (hook / demo beats / on-screen text / caption, grounded in this repo's real entry point, plus the demo hazards to avoid on camera): the fleet repo at `docs/content/IG_DRAFTS_2026-08-03.md` (this repo's section). Not filmed, not posted.
