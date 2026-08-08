@@ -7,6 +7,40 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Face + closed-eye detection (opt-in), `photopicker/faces.py`.**
+  `face_eye_score()` detects faces and scores eye-open/closed state using
+  MediaPipe Face Mesh (Apache License 2.0, pinned `mediapipe==0.10.21`) and
+  the published Eye Aspect Ratio (EAR) technique against its iris-refined
+  landmarks — no training or labeled data needed. `cull(..., face_gate=True)`
+  / CLI `--faces` multiplies a photo's composite score by `0.4` when the
+  worst detected face's eyes are below the standard EAR 0.2 blink threshold;
+  photos with no face are unaffected. **Off by default** — new `[faces]`
+  extra (`pip install "photopicker[faces]"`), no behavior change for
+  existing callers/profiles unless explicitly enabled. 7 new tests in
+  `tests/test_faces.py`, including a culler-ranking integration test.
+  **398/398 green, ruff-clean.**
+- **Burst similarity / keeper swap in the web UI.** `dedup_perceptual_clusters()`
+  (new `photopicker/dedup.py` function) keeps `dedup_perceptual`'s exact
+  keep-list but also returns which near-duplicate frames lost to each winner.
+  `cull()` threads that through as `CullResult.clusters` (winner -> losers)
+  and `CullResult.all_scores` (every scored survivor, not just keepers, so a
+  cluster loser's score is still visible). The web UI's focus view renders a
+  keeper's burst as a row of thumbnails (`GET /photo/<idx>?m=J` serves the
+  Jth loser); clicking one or `POST /swap {idx, member}` promotes it to the
+  pick — reversible by swapping again, and it clears the stale AI
+  score/reason since those judged the old frame.
+- 16 new tests (dedup clusters ×3, culler clusters/all_scores contract ×1,
+  build_session similar-list ×2, SessionStore.swap ×5, HTTP `/swap` +
+  `/photo?m=` ×5). **391/391 green, ruff-clean.**
+
+### Fixed
+- **`CullResult.scores` public contract restored to keepers-only.** An
+  in-flight version of the burst-swap feature (2026-07-19) leaked cluster-loser
+  paths into `scores`, which broke `pick_photos`/`cull` callers relying on
+  `set(result.scores) == set(result.keepers)` (that assumption is also a
+  pinned test). Loser scores now live in the new `all_scores` field instead.
+
 ### Changed
 - Aesthetic bonuses now **saturate** at `aesthetics.MAX_BONUS` (0.75): a photo
   can gain at most 75% of its base quality from the rule stack, no matter how

@@ -220,6 +220,45 @@ def test_cull_sharpest_per_cluster_wins(tmp_path: Path):
     assert result.keepers[0].name == "cluster_sharp.png"
 
 
+def test_cull_clusters_and_all_scores_keep_public_scores_keepers_only(tmp_path: Path):
+    """Burst members must never leak into `result.scores` (the public,
+    keepers-only contract) but must still be reachable via `all_scores` so a
+    reviewer can see a cluster loser's score without it being a keeper."""
+    from PIL import ImageFilter
+
+    folder = tmp_path / "cluster"
+    folder.mkdir()
+
+    arr = np.full((900, 900, 3), 128, dtype=np.uint8)
+    for r in range(0, 900, 16):
+        for c in range(0, 900, 16):
+            if (r // 16 + c // 16) % 2 == 0:
+                arr[r : r + 16, c : c + 16] = 255
+    base = Image.fromarray(arr)
+
+    base.save(folder / "cluster_sharp.png")
+    base.filter(ImageFilter.GaussianBlur(radius=4)).save(folder / "cluster_blur_a.png")
+    base.filter(ImageFilter.GaussianBlur(radius=6)).save(folder / "cluster_blur_b.png")
+
+    result = cull(_sorted_by_name(folder), top_n=3)
+
+    sharp = folder / "cluster_sharp.png"
+    blur_a = folder / "cluster_blur_a.png"
+    blur_b = folder / "cluster_blur_b.png"
+
+    # The blurred frames lost the dedup and are not keepers.
+    assert blur_a not in result.keepers
+    assert blur_b not in result.keepers
+    # Public contract: scores holds exactly the keepers, nothing else.
+    assert set(result.scores.keys()) == set(result.keepers)
+    # Cluster map records the winner -> losers relationship.
+    assert result.clusters.get(sharp) == [blur_a, blur_b]
+    # But their scores are still visible via all_scores for burst review.
+    assert blur_a in result.all_scores
+    assert blur_b in result.all_scores
+    assert sharp in result.all_scores
+
+
 def test_cull_all_rejected_dedupes_paths(tmp_path: Path):
     folder = _distinct_folder(tmp_path, 10)
     result = cull(_sorted_by_name(folder), top_n=3)

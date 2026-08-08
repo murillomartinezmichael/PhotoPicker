@@ -33,6 +33,7 @@ from .profiles import (
     register_profile,
     set_weight_overrides,
 )
+from .xmp import embed_xmp_rating, rating_for_rank
 
 
 def _parse_weights(pairs: tuple[str, ...]) -> dict[str, float]:
@@ -329,7 +330,12 @@ def main(
         classifier = CachingClassifier(ClipClassifier(), cache_path)
     else:
         classifier = None
-    result = pick_photos(folder, profile, classifier=classifier)
+    try:
+        result = pick_photos(folder, profile, classifier=classifier)
+    except ImportError as exc:
+        # Missing optional extra (e.g. [clip]) — human message, not a traceback.
+        click.echo(str(exc), err=True)
+        sys.exit(1)
 
     if dry_run:
         click.echo("[dry-run] CLIP skipped — pick shown below is StubClassifier-uniform.")
@@ -549,6 +555,16 @@ def main(
     help="Reject frames whose longer edge is below this many pixels.",
 )
 @click.option(
+    "--faces/--no-faces",
+    default=False,
+    show_default=True,
+    help=(
+        "Down-rank photos where the worst detected face has closed eyes "
+        "(MediaPipe Face Mesh, Apache 2.0 — opt-in). No face -> no penalty. "
+        "Requires `pip install \"photopicker[faces]\"`."
+    ),
+)
+@click.option(
     "--sort",
     "sort_mode",
     type=click.Choice(SORT_MODES),
@@ -593,6 +609,18 @@ def main(
     ),
 )
 @click.option(
+    "--xmp/--no-xmp",
+    "xmp_ratings",
+    default=False,
+    show_default=True,
+    help=(
+        "Embed an xmp:Rating star rating (5..1, scaled by keeper rank) into "
+        "the JPEG copies written by --output, so Lightroom/Bridge pick the "
+        "cull up. JPEG copies only — sidecars are ignored for JPEG, and "
+        "originals are never touched."
+    ),
+)
+@click.option(
     "--live-progress/--no-live-progress",
     default=False,
     show_default=True,
@@ -618,11 +646,13 @@ def cull_main(
     ai_max_attempts: int | None,
     sharpness: float,
     min_long_edge: int,
+    faces: bool,
     sort_mode: str,
     include_rejects: bool,
     resume: bool,
     manifest_path: Path | None,
     overwrite: bool,
+    xmp_ratings: bool,
     live_progress: bool,
     json_out: bool,
 ) -> None:
@@ -664,6 +694,7 @@ def cull_main(
             top_n=top_n,
             sharpness=sharpness,
             min_long_edge=min_long_edge,
+            faces=faces,
             sort_mode=sort_mode,
             prompt=prompt,
             no_ai=no_ai,
@@ -681,14 +712,19 @@ def cull_main(
             click.echo(f"  {stage}: {done}/{total}", err=True)
 
     click.echo(f"Culling {len(paths)} -> top {top_n}...", err=True)
-    result = cull(
-        paths,
-        top_n=top_n,
-        min_sharpness=sharpness,
-        min_long_edge=min_long_edge,
-        sort=sort_mode,
-        progress=_progress,
-    )
+    try:
+        result = cull(
+            paths,
+            top_n=top_n,
+            min_sharpness=sharpness,
+            min_long_edge=min_long_edge,
+            sort=sort_mode,
+            progress=_progress,
+            face_gate=faces,
+        )
+    except ImportError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
 
     ai_scores: dict[Path, tuple[int, str]] = {}
     if prompt and not no_ai:
@@ -766,13 +802,20 @@ def cull_main(
             click.echo(f"Cannot create output folder {output}: {exc}", err=True)
             sys.exit(2)
         copied = 0
-        for src in result.keepers:
+        rated = 0
+        for rank, src in enumerate(result.keepers, start=1):
             try:
-                copy_or_transcode(src, output, convert_heic=True)
+                dest = copy_or_transcode(src, output, convert_heic=True)
                 copied += 1
-            except OSError as exc:
+                if xmp_ratings and embed_xmp_rating(
+                    dest, rating_for_rank(rank, len(result.keepers))
+                ):
+                    rated += 1
+            except (OSError, ValueError) as exc:
                 click.echo(f"  copy failed for {src.name}: {exc}", err=True)
         click.echo(f"\nCopied {copied}/{len(result.keepers)} keepers -> {output}", err=True)
+        if xmp_ratings:
+            click.echo(f"Embedded xmp:Rating into {rated}/{copied} JPEG copies", err=True)
         if copied == 0 and result.keepers:
             sys.exit(2)
 
@@ -803,12 +846,13 @@ def cull_main(
         session = build_session(
             source_folder=folder,
             keepers=result.keepers,
-            scores=result.scores,
+            scores=result.all_scores,
             reject_summary=result.reject_counts(),
             input_count=result.total_input,
             prompt=prompt or "",
             ai_scores=ai_scores or None,
             include_rejects=rejected_map,
+            clusters=result.clusters,
         )
         store = SessionStore(session=session, session_path=session_path)
         try:
@@ -870,6 +914,7 @@ def _run_live_progress_flow(
     top_n: int,
     sharpness: float,
     min_long_edge: int,
+    faces: bool,
     sort_mode: str,
     prompt: str | None,
     no_ai: bool,
@@ -942,6 +987,7 @@ def _run_live_progress_flow(
             min_long_edge=min_long_edge,
             sort=sort_mode,
             progress=_progress,
+            face_gate=faces,
         )
     except Exception as exc:  # unexpected — surface + finish broker so UI unblocks
         broker.update("error", 0, 0)
@@ -1004,12 +1050,13 @@ def _run_live_progress_flow(
     hydrated = build_session(
         source_folder=folder,
         keepers=result.keepers,
-        scores=result.scores,
+        scores=result.all_scores,
         reject_summary=result.reject_counts(),
         input_count=result.total_input,
         prompt=prompt or "",
         ai_scores=ai_scores or None,
         include_rejects=rejected_map,
+        clusters=result.clusters,
     )
     store.hydrate(hydrated)
     broker.mark_finished()
