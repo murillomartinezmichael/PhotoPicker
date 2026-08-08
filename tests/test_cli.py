@@ -8,7 +8,7 @@ from click.testing import CliRunner
 from PIL import Image
 
 from photopicker import cli as cli_module
-from photopicker.classifier import StubClassifier
+from photopicker.classifier import CLIP_INSTALL_HINT, StubClassifier
 
 
 def _patch_cli_classifier(monkeypatch):
@@ -66,6 +66,24 @@ def test_cli_json_output(folder_of_images: Path, monkeypatch):
     payload = json.loads(result.output.split("Copied")[0])
     assert payload["profile"] == "default"
     assert "featured" in payload["selection"]
+
+
+def test_cli_missing_clip_extra_is_human_readable(folder_of_images: Path, monkeypatch):
+    """README's own example (`photopicker --folder X --profile aries`) without
+    the [clip] extra must print the install hint and exit 1 — no traceback."""
+
+    def raising(folder, profile_name, classifier=None):
+        raise ImportError(CLIP_INSTALL_HINT)
+
+    monkeypatch.setattr(cli_module, "pick_photos", raising)
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_module.main,
+        ["--folder", str(folder_of_images), "--profile", "aries"],
+    )
+    assert result.exit_code == 1
+    assert "photopicker[clip]" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_cli_unknown_profile(folder_of_images: Path):

@@ -28,9 +28,95 @@ from .culler import (
 from .profiles import (
     ConfigError,
     build_from_config,
+    get_profile,
     list_profiles,
     register_profile,
+    set_weight_overrides,
 )
+from .xmp import embed_xmp_rating, rating_for_rank
+
+
+def _parse_weights(pairs: tuple[str, ...]) -> dict[str, float]:
+    """Turn `--weight name=value` strings into a rule-name → weight mapping.
+
+    Raises ValueError with a human-readable message on a malformed pair; the
+    caller turns that into a clean exit rather than a traceback.
+    """
+    weights: dict[str, float] = {}
+    for pair in pairs:
+        name, sep, raw = pair.partition("=")
+        if not sep or not name.strip():
+            raise ValueError(f"--weight expects NAME=VALUE, got {pair!r}")
+        try:
+            weights[name.strip()] = float(raw)
+        except ValueError:
+            raise ValueError(f"--weight value must be a number, got {raw!r}") from None
+    return weights
+
+
+def _check_weights_apply(profile_name: str, weights: dict[str, float]) -> None:
+    """Reject a `--weight` the *selected* profile can't honour.
+
+    `set_weight_overrides` only knows the union of every rule name in the process,
+    so `--profile aries --weight crew=1` (a big7 rule) or a `--weight` on a
+    `--config` profile that declares no rules used to pass validation and then tune
+    nothing — the run looked retuned and wasn't. Scope the check to the profile
+    actually running.
+    """
+    declared = get_profile(profile_name).rule_names
+    if not declared:
+        raise ValueError(
+            f"profile {profile_name!r} has no tunable rules, so --weight would do "
+            "nothing. The 'aries' and 'big7' profiles ship rules; a --config "
+            "profile gets them from a 'rules' key."
+        )
+    unknown = sorted(set(weights) - declared)
+    if unknown:
+        raise ValueError(
+            f"profile {profile_name!r} declares no rule(s) named: {', '.join(unknown)}. "
+            f"Its rules: {', '.join(sorted(declared))}"
+        )
+
+
+def _share(value: float, total: float) -> str:
+    """Rule contribution as a share of the photo's total score.
+
+    A total of zero (black / unreadable frame scored 0.0) would divide by zero.
+    """
+    return f"{value / total * 100:5.1f}%" if total else "    -"
+
+
+def _benchmark_lines(result) -> list[str]:
+    """Render per-rule score contributions for every picked photo.
+
+    Answers "why did this photo win?" — the base quality score, then each
+    aesthetic rule's contribution in score points and as a share of the total.
+    Rules that fired at zero are still listed, so it's obvious which rules the
+    profile *considered* versus which ones actually moved the ranking.
+    """
+    explain = result.selection.explain
+    if not explain:
+        return [
+            "",
+            "== benchmark ==",
+            f"  Profile {result.profile!r} does not report per-rule contributions.",
+        ]
+
+    lines = ["", "== benchmark: score contributions =="]
+    for category, paths in result.selection.categorized.items():
+        for rank, path in enumerate(paths, start=1):
+            breakdown = explain.get(path)
+            if breakdown is None:
+                continue
+            total = breakdown.total
+            lines.append(f"{category} #{rank}  {path.name}  total {total:.3f}")
+            lines.append(
+                f"    quality           {breakdown.quality:7.3f}  "
+                f"{_share(breakdown.quality, total)}"
+            )
+            for rule, points in breakdown.contributions.items():
+                lines.append(f"    + {rule:<15} {points:+7.3f}  {_share(points, total)}")
+    return lines
 
 
 def _print_profiles_and_exit(ctx, _param, value):
@@ -139,6 +225,27 @@ def _print_profiles_and_exit(ctx, _param, value):
 )
 @click.option("--json-out", is_flag=True, help="Print result as JSON.")
 @click.option(
+    "--benchmark",
+    is_flag=True,
+    help=(
+        "Show WHY each photo scored — base quality plus every profile rule's "
+        "contribution in score points. Use it to tune profile weights. Profiles "
+        "that report no breakdown (e.g. default) say so."
+    ),
+)
+@click.option(
+    "--weight",
+    "weight_pairs",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help=(
+        "Override a profile rule's weight for this run, e.g. "
+        "--weight warmth=0.8 --weight furnished=0. Repeatable. Rule names are "
+        "the ones --benchmark prints; 0 switches a rule off. Tune a shoot "
+        "without editing the profile."
+    ),
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help=(
@@ -162,6 +269,8 @@ def main(
     webp: bool,
     webp_quality: int,
     json_out: bool,
+    benchmark: bool,
+    weight_pairs: tuple[str, ...],
     dry_run: bool,
 ) -> None:
     """Pick the best photos from FOLDER using PROFILE."""
@@ -188,6 +297,15 @@ def main(
         click.echo(f"Unknown profile {profile!r}. Available: {list_profiles()}", err=True)
         sys.exit(1)
 
+    if weight_pairs:
+        try:
+            weights = _parse_weights(weight_pairs)
+            _check_weights_apply(profile, weights)
+            set_weight_overrides(weights)
+        except ValueError as exc:
+            click.echo(f"Bad --weight: {exc}", err=True)
+            sys.exit(1)
+
     thumb_widths: list[int] = []
     if thumbnails.strip():
         try:
@@ -212,7 +330,12 @@ def main(
         classifier = CachingClassifier(ClipClassifier(), cache_path)
     else:
         classifier = None
-    result = pick_photos(folder, profile, classifier=classifier)
+    try:
+        result = pick_photos(folder, profile, classifier=classifier)
+    except ImportError as exc:
+        # Missing optional extra (e.g. [clip]) — human message, not a traceback.
+        click.echo(str(exc), err=True)
+        sys.exit(1)
 
     if dry_run:
         click.echo("[dry-run] CLIP skipped — pick shown below is StubClassifier-uniform.")
@@ -231,9 +354,22 @@ def main(
                 if paths
             },
         }
+        if benchmark:
+            picked = set(result.selection.all_picked())
+            payload["benchmark"] = {
+                str(path): {
+                    "quality": breakdown.quality,
+                    "contributions": breakdown.contributions,
+                    "total": breakdown.total,
+                }
+                for path, breakdown in result.selection.explain.items()
+                if path in picked
+            }
         click.echo(json.dumps(payload, indent=2))
     else:
         click.echo(result.summary())
+        if benchmark:
+            click.echo("\n".join(_benchmark_lines(result)))
 
     output_paths: dict[Path, Path] = {}
     thumbnail_paths: dict[Path, dict[int, Path]] = {}
@@ -419,6 +555,16 @@ def main(
     help="Reject frames whose longer edge is below this many pixels.",
 )
 @click.option(
+    "--faces/--no-faces",
+    default=False,
+    show_default=True,
+    help=(
+        "Down-rank photos where the worst detected face has closed eyes "
+        "(MediaPipe Face Mesh, Apache 2.0 — opt-in). No face -> no penalty. "
+        "Requires `pip install \"photopicker[faces]\"`."
+    ),
+)
+@click.option(
     "--sort",
     "sort_mode",
     type=click.Choice(SORT_MODES),
@@ -463,6 +609,18 @@ def main(
     ),
 )
 @click.option(
+    "--xmp/--no-xmp",
+    "xmp_ratings",
+    default=False,
+    show_default=True,
+    help=(
+        "Embed an xmp:Rating star rating (5..1, scaled by keeper rank) into "
+        "the JPEG copies written by --output, so Lightroom/Bridge pick the "
+        "cull up. JPEG copies only — sidecars are ignored for JPEG, and "
+        "originals are never touched."
+    ),
+)
+@click.option(
     "--live-progress/--no-live-progress",
     default=False,
     show_default=True,
@@ -488,11 +646,13 @@ def cull_main(
     ai_max_attempts: int | None,
     sharpness: float,
     min_long_edge: int,
+    faces: bool,
     sort_mode: str,
     include_rejects: bool,
     resume: bool,
     manifest_path: Path | None,
     overwrite: bool,
+    xmp_ratings: bool,
     live_progress: bool,
     json_out: bool,
 ) -> None:
@@ -534,6 +694,7 @@ def cull_main(
             top_n=top_n,
             sharpness=sharpness,
             min_long_edge=min_long_edge,
+            faces=faces,
             sort_mode=sort_mode,
             prompt=prompt,
             no_ai=no_ai,
@@ -551,14 +712,19 @@ def cull_main(
             click.echo(f"  {stage}: {done}/{total}", err=True)
 
     click.echo(f"Culling {len(paths)} -> top {top_n}...", err=True)
-    result = cull(
-        paths,
-        top_n=top_n,
-        min_sharpness=sharpness,
-        min_long_edge=min_long_edge,
-        sort=sort_mode,
-        progress=_progress,
-    )
+    try:
+        result = cull(
+            paths,
+            top_n=top_n,
+            min_sharpness=sharpness,
+            min_long_edge=min_long_edge,
+            sort=sort_mode,
+            progress=_progress,
+            face_gate=faces,
+        )
+    except ImportError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
 
     ai_scores: dict[Path, tuple[int, str]] = {}
     if prompt and not no_ai:
@@ -636,13 +802,20 @@ def cull_main(
             click.echo(f"Cannot create output folder {output}: {exc}", err=True)
             sys.exit(2)
         copied = 0
-        for src in result.keepers:
+        rated = 0
+        for rank, src in enumerate(result.keepers, start=1):
             try:
-                copy_or_transcode(src, output, convert_heic=True)
+                dest = copy_or_transcode(src, output, convert_heic=True)
                 copied += 1
-            except OSError as exc:
+                if xmp_ratings and embed_xmp_rating(
+                    dest, rating_for_rank(rank, len(result.keepers))
+                ):
+                    rated += 1
+            except (OSError, ValueError) as exc:
                 click.echo(f"  copy failed for {src.name}: {exc}", err=True)
         click.echo(f"\nCopied {copied}/{len(result.keepers)} keepers -> {output}", err=True)
+        if xmp_ratings:
+            click.echo(f"Embedded xmp:Rating into {rated}/{copied} JPEG copies", err=True)
         if copied == 0 and result.keepers:
             sys.exit(2)
 
@@ -673,12 +846,13 @@ def cull_main(
         session = build_session(
             source_folder=folder,
             keepers=result.keepers,
-            scores=result.scores,
+            scores=result.all_scores,
             reject_summary=result.reject_counts(),
             input_count=result.total_input,
             prompt=prompt or "",
             ai_scores=ai_scores or None,
             include_rejects=rejected_map,
+            clusters=result.clusters,
         )
         store = SessionStore(session=session, session_path=session_path)
         try:
@@ -740,6 +914,7 @@ def _run_live_progress_flow(
     top_n: int,
     sharpness: float,
     min_long_edge: int,
+    faces: bool,
     sort_mode: str,
     prompt: str | None,
     no_ai: bool,
@@ -812,6 +987,7 @@ def _run_live_progress_flow(
             min_long_edge=min_long_edge,
             sort=sort_mode,
             progress=_progress,
+            face_gate=faces,
         )
     except Exception as exc:  # unexpected — surface + finish broker so UI unblocks
         broker.update("error", 0, 0)
@@ -874,12 +1050,13 @@ def _run_live_progress_flow(
     hydrated = build_session(
         source_folder=folder,
         keepers=result.keepers,
-        scores=result.scores,
+        scores=result.all_scores,
         reject_summary=result.reject_counts(),
         input_count=result.total_input,
         prompt=prompt or "",
         ai_scores=ai_scores or None,
         include_rejects=rejected_map,
+        clusters=result.clusters,
     )
     store.hydrate(hydrated)
     broker.mark_finished()

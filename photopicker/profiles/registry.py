@@ -8,9 +8,33 @@ from ..classifier import Classifier
 
 
 @dataclass
+class RuleBreakdown:
+    """Why one photo scored what it scored — the payload behind CLI `--benchmark`.
+
+    `quality` is the base composite (sharpness + exposure). `contributions` maps
+    a rule name to the *score points* that rule added on top of the base, so the
+    numbers are directly comparable and sum cleanly:
+
+        total = quality + sum(contributions.values())
+
+    A profile with no aesthetic rules can emit `contributions={}` and still get a
+    valid breakdown. Rules that fired at zero probability are kept (as 0.0) so the
+    table shows every rule the profile considered, not just the ones that hit.
+    """
+
+    quality: float
+    contributions: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def total(self) -> float:
+        return self.quality + sum(self.contributions.values())
+
+
+@dataclass
 class Selection:
     categorized: dict[str, list[Path]] = field(default_factory=dict)
     rejected: dict[str, list[Path]] = field(default_factory=dict)
+    explain: dict[Path, RuleBreakdown] = field(default_factory=dict)
 
     def all_picked(self) -> list[Path]:
         seen: set[Path] = set()
@@ -30,6 +54,14 @@ class Selection:
 class Profile:
     name: str
     select: Callable[[list[Path], Classifier], Selection]
+    #: Names of the aesthetic rules this profile ranks with — the ones
+    #: `--benchmark` prints and `--weight NAME=VALUE` can retune. Plain strings
+    #: (not the rule objects) so the registry stays free of an import cycle with
+    #: `aesthetics`. A profile with no rule stack (`default`, `aries-gallery`, any
+    #: `--config` profile) leaves this empty, which is what lets the CLI say
+    #: "this profile has no tunable rules" instead of accepting a `--weight` that
+    #: would quietly do nothing.
+    rule_names: frozenset[str] = field(default_factory=frozenset)
 
 
 _REGISTRY: dict[str, Profile] = {}

@@ -8,6 +8,100 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **Face + closed-eye detection (opt-in), `photopicker/faces.py`.**
+  `face_eye_score()` detects faces and scores eye-open/closed state using
+  MediaPipe Face Mesh (Apache License 2.0, pinned `mediapipe==0.10.21`) and
+  the published Eye Aspect Ratio (EAR) technique against its iris-refined
+  landmarks — no training or labeled data needed. `cull(..., face_gate=True)`
+  / CLI `--faces` multiplies a photo's composite score by `0.4` when the
+  worst detected face's eyes are below the standard EAR 0.2 blink threshold;
+  photos with no face are unaffected. **Off by default** — new `[faces]`
+  extra (`pip install "photopicker[faces]"`), no behavior change for
+  existing callers/profiles unless explicitly enabled. 7 new tests in
+  `tests/test_faces.py`, including a culler-ranking integration test.
+  **398/398 green, ruff-clean.**
+- **Burst similarity / keeper swap in the web UI.** `dedup_perceptual_clusters()`
+  (new `photopicker/dedup.py` function) keeps `dedup_perceptual`'s exact
+  keep-list but also returns which near-duplicate frames lost to each winner.
+  `cull()` threads that through as `CullResult.clusters` (winner -> losers)
+  and `CullResult.all_scores` (every scored survivor, not just keepers, so a
+  cluster loser's score is still visible). The web UI's focus view renders a
+  keeper's burst as a row of thumbnails (`GET /photo/<idx>?m=J` serves the
+  Jth loser); clicking one or `POST /swap {idx, member}` promotes it to the
+  pick — reversible by swapping again, and it clears the stale AI
+  score/reason since those judged the old frame.
+- 16 new tests (dedup clusters ×3, culler clusters/all_scores contract ×1,
+  build_session similar-list ×2, SessionStore.swap ×5, HTTP `/swap` +
+  `/photo?m=` ×5). **391/391 green, ruff-clean.**
+
+### Fixed
+- **`CullResult.scores` public contract restored to keepers-only.** An
+  in-flight version of the burst-swap feature (2026-07-19) leaked cluster-loser
+  paths into `scores`, which broke `pick_photos`/`cull` callers relying on
+  `set(result.scores) == set(result.keepers)` (that assumption is also a
+  pinned test). Loser scores now live in the new `all_scores` field instead.
+
+### Changed
+- Aesthetic bonuses now **saturate** at `aesthetics.MAX_BONUS` (0.75): a photo
+  can gain at most 75% of its base quality from the rule stack, no matter how
+  many rules fire. Contributions are scaled down proportionally when the stack
+  runs over, so `--benchmark` still sums to the score the ranker used and still
+  shows which rule did the work. Fixes the drift where each new rule (aries is
+  now at 0.97 total weight, big7 at 1.05) raised the ceiling for everything
+  already at the top, letting aesthetics creep toward outweighing the
+  sharpness/exposure score they were only meant to tiebreak. Ranking stays
+  monotone — the multiplier is `min(earned, 0.75)`.
+
+### Added
+- Big7 profile: `HERO_EXTERIOR_LABEL` + `HERO_EXTERIOR_WEIGHT` (0.1) — fourth
+  aesthetic bonus stacked additively on top of people + clean-lines +
+  finished-result. Rewards the residential-GC hero shot: completed exterior
+  from the street showing front elevation, driveway, entry, and landscaping —
+  the specific curb-appeal frame prospects screenshot. Orthogonal to
+  FINISHED_RESULT (which fires for any completed room too); hero-exterior
+  narrows to the street-view sales frame. Weight (0.1) is smallest of the
+  four so FINISHED_RESULT (0.15) still dominates the direct tiebreaker — an
+  interior handover shot beats a distant empty facade. `_combined` gains a
+  `hero=0.0` default so external callers stay source-compatible. 3 new tests:
+  math (additive stacking + back-compat), ranking (hero shot beats baseline
+  in the "build" bucket), ordering invariant (finished-only shot still beats
+  hero-only). **285/285 tests green, ruff-clean.**
+- Aries profile: `AMBIENT_LIGHTS_LABEL` + `AMBIENT_LIGHTS_WEIGHT` (0.15) — third
+  aesthetic bonus stacked additively on top of warmth + greenery. Rewards
+  after-dark money shots: string lights, lanterns, an illuminated deck at dusk
+  or night — the "we actually live out here" signal. Orthogonal to WARMTH
+  (golden-hour daylight) and GREENERY (plants): a night-lit shot picks up the
+  bonus even if the sky is dark and no landscaping is visible. Weight is smaller
+  than both existing bonuses so WARMTH (0.5) and GREENERY (0.2) still dominate
+  direct tiebreakers within a stage slot. `_combined` gains an `ambient=0.0`
+  default so external callers stay source-compatible. 3 new tests: math
+  (additive stacking + back-compat), ranking (lit shot beats bare within the
+  "after" stage), ordering invariant (greenery-only shot still beats
+  ambient-only within the same stage). **282/282 tests green, ruff-clean.**
+- Big7 profile: `FINISHED_RESULT_LABEL` + `FINISHED_RESULT_WEIGHT` (0.15) — third
+  aesthetic bonus stacked additively on top of people + clean-lines. Rewards
+  shots that read as completed handover (clean surfaces, no debris, no
+  unfinished work) — Big7's marketing money shot for "here's what your home
+  will look like." Orthogonal to PEOPLE (occupancy) and CLEAN_LINES
+  (composition): a completed shot reads as trust regardless of who's in
+  frame or how tight the framing is. Weight is smaller than both existing
+  bonuses so PEOPLE (0.5) and CLEAN_LINES (0.3) still dominate direct
+  tiebreakers. `_combined` gains a `finished=0.0` default so external
+  callers stay source-compatible. 3 new tests: math (additive stacking +
+  back-compat), ranking (finished shot wins within a bucket vs debris),
+  ordering invariant (clean-lines shot still beats finished-only shot).
+  **279/279 tests green, ruff-clean.**
+- Aries profile: `GREENERY_LABEL` + `GREENERY_WEIGHT` (0.2) — second aesthetic
+  bonus stacked additively on top of the warmth bonus. Rewards shots where the
+  finished deck sits inside mature landscaping (plants, gardens, hedges) — the
+  "outdoor" in "outdoor living." Orthogonal to warmth: a midday shot with lush
+  planting still earns the bump. Weight is smaller than `WARMTH_WEIGHT` (0.5)
+  so golden-hour still wins direct tiebreakers within a stage slot. `_combined`
+  gains a `greenery=0.0` default so external callers stay source-compatible.
+  3 new tests: math (additive stacking + back-compat), ranking (planted deck
+  beats bare within the "after" stage), ordering invariant (warmth-only shot
+  still beats greenery-only within the same stage). **276/276 tests green,
+  ruff-clean.**
 - Big7 profile: `CLEAN_LINES_LABEL` + `CLEAN_LINES_WEIGHT` (0.3) — second aesthetic
   bonus stacked additively on top of the people bonus. Rewards shots that read as
   craftsmanship (straight framing, square corners, level horizons) — the trade's

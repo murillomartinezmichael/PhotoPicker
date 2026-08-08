@@ -8,8 +8,9 @@ dep-light and the UI ships offline.
 Endpoints (all local, no auth — 127.0.0.1 only):
     GET  /                    HTML shell
     GET  /state               JSON session state
-    GET  /photo/<idx>?w=N     JPEG thumbnail bytes, cached
+    GET  /photo/<idx>?w=N     JPEG thumbnail bytes, cached (&m=J = Jth similar frame)
     POST /decision            {"idx": N, "decision": "keep"|"reject"|"clear"}
+    POST /swap                {"idx": N, "member": J} — near-dup becomes the pick
     POST /undo                undoes last decision
     POST /reset               clears every decision
     POST /export              {"target": "/path"} — copies keepers there
@@ -32,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from .convert import ImageUnreadable, copy_or_transcode, thumbnail_bytes
+from .xmp import embed_xmp_rating, rating_for_rank
 
 DEFAULT_PORT = 8765
 SESSION_FILE = ".photopicker-session.json"
@@ -126,6 +128,10 @@ class Candidate:
     decision: Decision = ""
     capture_time: str | None = None
     rejected_reason: str = ""  # "" when the pipeline kept it as a keeper
+    # Near-duplicate frames that lost the dedup to this pick:
+    # [{"path", "filename", "score"}]. The UI renders them side-by-side and
+    # `SessionStore.swap` promotes one to be the pick.
+    similar: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -207,6 +213,35 @@ class SessionStore:
             self.session = new_session
             self._save()
 
+    def swap(self, idx: int, member: int) -> None:
+        """Promote one of a candidate's near-duplicate frames to be the pick.
+
+        The member's path/filename/score become the candidate's; the old pick
+        drops into `similar` in the member's place, so swapping is reversible
+        by swapping again. AI score/reason are cleared — they judged the old
+        frame. Deliberately not part of the undo history: it changes *which*
+        file the slot points at, not the keep/reject decision on the slot.
+        """
+        from .exif import get_capture_time
+
+        with self._lock:
+            if not (0 <= idx < len(self.session.candidates)):
+                raise IndexError(idx)
+            c = self.session.candidates[idx]
+            if not (0 <= member < len(c.similar)):
+                raise IndexError(member)
+            entry = c.similar[member]
+            old = {"path": c.path, "filename": c.filename, "score": c.score}
+            c.path = str(entry["path"])
+            c.filename = str(entry["filename"])
+            c.score = float(entry.get("score", 0.0))
+            c.similar[member] = old
+            c.ai_score = None
+            c.ai_reason = ""
+            capture = get_capture_time(Path(c.path))
+            c.capture_time = capture.isoformat() if capture else None
+            self._save()
+
     def keepers(self) -> list[Path]:
         with self._lock:
             return [Path(c.path) for c in self.session.candidates if c.decision == "keep"]
@@ -219,6 +254,36 @@ class SessionStore:
                 for c in self.session.candidates
                 if c.decision in ("keep", "")
             ]
+
+
+def _override_stats(session: Session) -> dict[str, Any] | None:
+    """The honest accuracy metric: how often the human reverses pipeline picks.
+
+    Picks = candidates the pipeline surfaced as keepers (no `rejected_reason`).
+    An override is a pick the human rejected; undecided counts as kept — that
+    is exactly how export treats it. Rescues (pipeline rejects flipped to keep)
+    are counted separately. Returns None when the session has no picks.
+    """
+    picks = [c for c in session.candidates if not c.rejected_reason]
+    if not picks:
+        return None
+    overridden = sum(1 for c in picks if c.decision == "reject")
+    kept = len(picks) - overridden
+    rate = overridden / len(picks)
+    rescued = sum(
+        1 for c in session.candidates if c.rejected_reason and c.decision == "keep"
+    )
+    line = f"kept {kept}/{len(picks)} picks — {round(rate * 100)}% override"
+    if rescued:
+        line += f" · rescued {rescued} pipeline reject{'s' if rescued != 1 else ''}"
+    return {
+        "picks": len(picks),
+        "kept": kept,
+        "overridden": overridden,
+        "rate": round(rate, 4),
+        "rescued": rescued,
+        "line": line,
+    }
 
 
 def _build_export_manifest(
@@ -262,6 +327,7 @@ def _build_export_manifest(
         "reject_summary": session.reject_summary,
         "input_count": session.input_count,
         "exported_count": len(exported_paths),
+        "override": _override_stats(session),
         "picks": picks,
     }
 
@@ -292,6 +358,7 @@ def build_session(
     prompt: str = "",
     ai_scores: dict[Path, tuple[int, str]] | None = None,
     include_rejects: dict[str, list[Path]] | None = None,
+    clusters: dict[Path, list[Path]] | None = None,
 ) -> Session:
     """Wrap a cull result in an editable Session for the web UI.
 
@@ -299,11 +366,16 @@ def build_session(
     tiny / unreadable) are added to the candidate list *after* the keepers,
     with `rejected_reason` set. The UI hides them behind a filter chip so you
     can rescue false positives without them cluttering the default grid.
+
+    `clusters` (winner -> near-duplicate losers, from the cull's perceptual
+    dedup) fills each keeper's `similar` list so the UI can show the burst
+    side-by-side and swap the pick.
     """
     from .exif import get_capture_time
 
     scores = scores or {}
     ai_scores = ai_scores or {}
+    clusters = clusters or {}
     candidates: list[Candidate] = []
     for i, p in enumerate(keepers):
         ai = ai_scores.get(p)
@@ -317,6 +389,14 @@ def build_session(
                 ai_score=ai[0] if ai else None,
                 ai_reason=ai[1] if ai else "",
                 capture_time=capture.isoformat() if capture else None,
+                similar=[
+                    {
+                        "path": str(m),
+                        "filename": m.name,
+                        "score": float(scores.get(m, 0.0)),
+                    }
+                    for m in clusters.get(p, [])
+                ],
             )
         )
     if include_rejects:
@@ -414,6 +494,8 @@ def make_handler(
             try:
                 if self.path == "/decision":
                     self._handle_decision()
+                elif self.path == "/swap":
+                    self._handle_swap()
                 elif self.path == "/undo":
                     idx = store.undo()
                     self._send_json({"undone_idx": idx, "state": store.get().to_dict()})
@@ -494,7 +576,7 @@ def make_handler(
 
         # ---- handlers ----
         def _handle_photo(self) -> None:
-            # /photo/<idx>?w=N
+            # /photo/<idx>?w=N — &m=J serves the Jth similar (near-dup) frame
             _, _, rest = self.path.partition("/photo/")
             idx_str, _, qs = rest.partition("?")
             try:
@@ -503,6 +585,7 @@ def make_handler(
                 self._send_text(HTTPStatus.BAD_REQUEST, "bad idx")
                 return
             width = THUMB_WIDTH
+            member: int | None = None
             if qs:
                 for pair in qs.split("&"):
                     k, _, v = pair.partition("=")
@@ -511,11 +594,23 @@ def make_handler(
                             width = max(64, min(2400, int(v)))
                         except ValueError:
                             pass
+                    elif k == "m":
+                        try:
+                            member = int(v)
+                        except ValueError:
+                            pass
             session = store.get()
             if not (0 <= idx < len(session.candidates)):
                 self._send_text(HTTPStatus.NOT_FOUND, "no such photo")
                 return
-            path = Path(session.candidates[idx].path)
+            candidate = session.candidates[idx]
+            if member is not None:
+                if not (0 <= member < len(candidate.similar)):
+                    self._send_text(HTTPStatus.NOT_FOUND, "no such similar frame")
+                    return
+                path = Path(candidate.similar[member]["path"])
+            else:
+                path = Path(candidate.path)
             try:
                 data = thumb_cache.get_or_render(path, width)
             except ImageUnreadable as exc:
@@ -551,6 +646,21 @@ def make_handler(
                 return
             self._send_json({"ok": True, "state": store.get().to_dict()})
 
+        def _handle_swap(self) -> None:
+            body = self._read_json()
+            try:
+                idx = int(body.get("idx"))
+                member = int(body.get("member"))
+            except (TypeError, ValueError):
+                self._send_text(HTTPStatus.BAD_REQUEST, "bad idx/member")
+                return
+            try:
+                store.swap(idx, member)
+            except IndexError:
+                self._send_text(HTTPStatus.NOT_FOUND, "no such photo or similar frame")
+                return
+            self._send_json({"ok": True, "state": store.get().to_dict()})
+
         def _handle_export(self) -> None:
             body = self._read_json()
             target = body.get("target", "")
@@ -560,6 +670,7 @@ def make_handler(
             include_undecided = bool(body.get("include_undecided", False))
             convert_heic = bool(body.get("convert_heic", True))
             write_manifest = bool(body.get("write_manifest", False))
+            embed_xmp = bool(body.get("xmp", False))
             target_dir = Path(str(target)).expanduser()
             try:
                 target_dir.mkdir(parents=True, exist_ok=True)
@@ -573,10 +684,15 @@ def make_handler(
                 self._send_json({"exported": 0, "target": str(target_dir), "note": "nothing to export"})
                 return
             src_to_dest: dict[Path, Path] = {}
-            for src in paths:
+            rated = 0
+            for rank, src in enumerate(paths, start=1):
                 try:
                     dest = copy_or_transcode(src, target_dir, convert_heic=convert_heic)
                     src_to_dest[src] = dest
+                    if embed_xmp and embed_xmp_rating(
+                        dest, rating_for_rank(rank, len(paths))
+                    ):
+                        rated += 1
                 except Exception:
                     log.exception("export failed for %s", src)
             written = [p.name for p in src_to_dest.values()]
@@ -585,6 +701,11 @@ def make_handler(
                 "target": str(target_dir),
                 "files": written,
             }
+            if embed_xmp:
+                payload["xmp_embedded"] = rated
+            override = _override_stats(store.get())
+            if override is not None:
+                payload["override"] = override
             if write_manifest and src_to_dest:
                 manifest = _build_export_manifest(store.get(), src_to_dest, target_dir)
                 manifest_path = target_dir / "manifest.json"
@@ -905,7 +1026,64 @@ INDEX_HTML = r"""<!doctype html>
   }
   #focus-view .focus-meta strong { color: var(--ink); }
   #focus-view .focus-meta .prompt-line { color: var(--muted); }
+  #focus-view .focus-stats {
+    margin-top: 10px;
+    display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+    padding: 8px 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    font-size: 12px; color: var(--muted);
+    letter-spacing: 0.05em;
+    max-width: min(90vw, 760px);
+  }
+  #focus-view .focus-stats .val { color: var(--ink); font-weight: 700; }
+  #focus-view .focus-stats .pct { color: var(--cyan); }
+  #focus-view .focus-stats .reason { color: var(--muted); }
+  #focus-view .focus-stats .culled { color: var(--reject); }
   #focus-view .close-hint { position: absolute; top: 12px; right: 16px; color: var(--muted); font-size: 11px; }
+  #focus-view.has-similar #focus-img { max-height: calc(100vh - 340px); }
+  #focus-similar { margin-top: 10px; display: none; flex-direction: column; gap: 6px; }
+  #focus-similar.on { display: flex; }
+  #focus-similar .sim-label {
+    font-size: 11px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  #focus-similar .sim-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #focus-similar .sim-card {
+    position: relative;
+    width: 132px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    cursor: pointer;
+    transition: box-shadow 100ms ease;
+  }
+  #focus-similar .sim-card img { width: 100%; display: block; }
+  #focus-similar .sim-card:hover { box-shadow: 0 0 8px rgba(77,229,255,0.4); }
+  #focus-similar .sim-card.current {
+    border-color: var(--keep);
+    box-shadow: 0 0 8px rgba(41,209,122,0.4);
+    cursor: default;
+  }
+  #focus-similar .sim-card .key {
+    position: absolute; top: 2px; left: 4px;
+    background: rgba(0,0,0,0.65); color: var(--cyan);
+    padding: 0 5px; font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+  #focus-similar .sim-card.current .key { color: var(--keep); }
+  #focus-similar .sim-card .sim-meta {
+    padding: 2px 4px;
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 0.04em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card .sim-badge {
+    position: absolute; bottom: 26px; left: 4px;
+    background: rgba(0,0,0,0.6); color: var(--cyan);
+    border: 1px solid var(--line);
+    padding: 1px 6px; font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
   #export-dialog, #help-dialog {
     position: fixed; inset: 0;
     background: rgba(4,6,10,0.88);
@@ -1138,10 +1316,17 @@ INDEX_HTML = r"""<!doctype html>
   <img id="focus-img" alt="">
   <div class="focus-meta">
     <span><strong id="focus-name"></strong></span>
-    <span>quality <strong id="focus-score"></strong></span>
-    <span id="focus-ai" style="display:none">ai <strong id="focus-ai-score"></strong></span>
     <span id="focus-capture" class="prompt-line"></span>
-    <span id="focus-ai-reason" class="prompt-line"></span>
+  </div>
+  <div class="focus-stats" id="focus-stats" aria-label="photo score details">
+    <span id="focus-quality">quality <span class="val" id="focus-score"></span> <span class="pct" id="focus-pct"></span></span>
+    <span id="focus-ai" style="display:none">ai <span class="val" id="focus-ai-score"></span></span>
+    <span id="focus-ai-reason" class="reason"></span>
+    <span id="focus-culled" class="culled" style="display:none">culled: <span id="focus-reject-reason"></span></span>
+  </div>
+  <div id="focus-similar" aria-label="similar frames">
+    <div class="sim-label">burst — click a frame or press its number to make it the pick</div>
+    <div class="sim-row" id="focus-similar-row"></div>
   </div>
 </div>
 
@@ -1155,6 +1340,7 @@ INDEX_HTML = r"""<!doctype html>
     <label><input type="checkbox" id="export-undecided"> Include undecided (treat un-marked as keepers)</label>
     <label><input type="checkbox" id="export-no-convert"> Keep HEIC as HEIC (no transcode)</label>
     <label><input type="checkbox" id="export-manifest" checked> Write manifest.json alongside exports</label>
+    <label><input type="checkbox" id="export-xmp"> Embed XMP star ratings into JPEG copies (Lightroom-readable)</label>
     <div id="export-result"></div>
     <div class="actions">
       <button id="export-cancel">Cancel</button>
@@ -1196,6 +1382,17 @@ INDEX_HTML = r"""<!doctype html>
 'use strict';
 const $ = (id) => document.getElementById(id);
 const state = { session: null, focus: 0, filter: 'all', sort: 'score' };
+
+function photoUrl(idx, width, c, member) {
+  // The v param busts the browser cache when a swap changes which file
+  // /photo/<idx> serves (the URL is otherwise identical before/after).
+  let url = `/photo/${idx}?w=${width}`;
+  if (member != null) url += `&m=${member}`;
+  const key = member != null ? c.similar[member].path : c.path;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return `${url}&v=${h}`;
+}
 
 function formatCaptureTime(iso) {
   if (!iso) return '';
@@ -1277,7 +1474,7 @@ function renderGrid() {
     card.dataset.idx = c.idx;
     const img = document.createElement('img');
     img.loading = 'lazy';
-    img.src = `/photo/${c.idx}?w=480`;
+    img.src = photoUrl(c.idx, 480, c);
     img.alt = c.filename;
     img.addEventListener('load', () => img.classList.add('loaded'));
     card.appendChild(img);
@@ -1303,6 +1500,12 @@ function renderGrid() {
     if (c.ai_score != null) scoreBits.push(`ai ${c.ai_score}`);
     meta.innerHTML = `<span>${c.filename}</span><span>${scoreBits.join(' · ')}</span>`;
     card.appendChild(meta);
+    if (!c.rejected_reason && c.similar && c.similar.length) {
+      const sim = document.createElement('div');
+      sim.className = 'sim-badge';
+      sim.textContent = `+${c.similar.length} similar`;
+      card.appendChild(sim);
+    }
     card.addEventListener('click', () => {
       state.focus = c.idx;
       openFocus();
@@ -1409,6 +1612,19 @@ async function undo() {
   toast('undone');
 }
 
+function qualityPercentile(c) {
+  // 1-based rank of this photo's composite score among the session's pipeline
+  // keepers, as "top N%". Client-side only — the score list is already here.
+  const scores = state.session.candidates
+    .filter((x) => !x.rejected_reason)
+    .map((x) => x.score || 0)
+    .sort((a, b) => b - a);
+  if (!scores.length) return null;
+  let rank = scores.findIndex((s) => s <= (c.score || 0)) + 1;
+  if (rank === 0) rank = scores.length;
+  return Math.max(1, Math.round((rank / scores.length) * 100));
+}
+
 function openFocus() {
   if (!state.session || !state.session.candidates.length) return;
   const c = state.session.candidates.find((x) => x.idx === state.focus)
@@ -1417,7 +1633,18 @@ function openFocus() {
   state.focus = c.idx;
   $('focus-img').src = `/photo/${c.idx}?w=1200`;
   $('focus-name').textContent = c.filename;
-  $('focus-score').textContent = (c.score * 100).toFixed(0);
+  if (c.rejected_reason) {
+    // Pipeline reject — its 0.0 score is a sentinel, not a measurement.
+    $('focus-quality').style.display = 'none';
+    $('focus-culled').style.display = '';
+    $('focus-reject-reason').textContent = c.rejected_reason;
+  } else {
+    $('focus-quality').style.display = '';
+    $('focus-culled').style.display = 'none';
+    $('focus-score').textContent = (c.score * 100).toFixed(0);
+    const pct = qualityPercentile(c);
+    $('focus-pct').textContent = pct != null ? `· top ${pct}% of this shoot` : '';
+  }
   if (c.ai_score != null) {
     $('focus-ai').style.display = '';
     $('focus-ai-score').textContent = c.ai_score;
@@ -1451,6 +1678,7 @@ async function runExport() {
     include_undecided: $('export-undecided').checked,
     convert_heic: !$('export-no-convert').checked,
     write_manifest: $('export-manifest').checked,
+    xmp: $('export-xmp').checked,
   };
   const r = await postJSON('/export', body);
   const box = $('export-result');
@@ -1464,6 +1692,8 @@ async function runExport() {
   box.classList.remove('err');
   let msg = `Copied ${j.exported} keepers → ${j.target}`;
   if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
+  if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
+  if (j.override) msg += ` · ${j.override.line}`;
   box.textContent = msg;
   toast(msg);
 }

@@ -87,3 +87,20 @@ A central tool that takes a folder of images and outputs the curated lineup — 
 - OpenCV (sharpness)
 - Click (CLI)
 - Optional: transformers + torch (CLIP)
+
+
+<!-- AI-HUB-SYNC:START -->
+## AI Product Research Update - 2026-07-09
+
+Source of product truth: ..\AI_HUB.md.
+
+**Lane:** photo culling for client sites
+
+**Design decision:** CLI/library is right. If a UI ever appears, it should be a contact-sheet review, not a full photo manager.
+
+**Product direction:** Document profiles for Big7 and Aries V2, keep tests green, and integrate only at asset intake points.
+
+**Scope boundary:** Shared utility; prevent duplicate photo pickers.
+
+**Acceptance evidence:** pytest; profile fixture tests; CI.
+<!-- AI-HUB-SYNC:END -->

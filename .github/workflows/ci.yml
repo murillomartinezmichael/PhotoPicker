@@ -62,3 +62,8 @@ jobs:
         with:
           name: dist
           path: dist/
+
+# Cancel superseded runs of the same ref — CI-budget discipline (2026-07-19).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true

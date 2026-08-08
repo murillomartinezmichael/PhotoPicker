@@ -27,7 +27,9 @@ def average_hash(path: Path, size: int = _AHASH_SIZE) -> int:
     minor compression."""
     with Image.open(path) as img:
         g = img.convert("L").resize((size, size), Image.LANCZOS)
-    px = list(g.getdata())
+    # `tobytes()` on an "L" image is one byte per pixel, same values `getdata()`
+    # yielded — and it survives Pillow 14, which drops `Image.getdata`.
+    px = g.tobytes()
     avg = sum(px) / len(px)
     bits = 0
     for i, p in enumerate(px):
@@ -76,17 +78,55 @@ def dedup_perceptual(
 ) -> list[Path]:
     """Return the input list with near-duplicate images removed. First-seen
     order wins — if you want the highest-quality of each cluster to survive,
-    sort `paths` by your quality metric before calling."""
-    kept: list[tuple[Path, int]] = []
+    sort `paths` by your quality metric before calling.
+
+    A photo we cannot hash (corrupt, truncated, unsupported codec) is *passed
+    through*, not dropped. Dedup runs before the quality gate, and the gate is
+    the component that knows how to say "unreadable" — dropping it here made it
+    vanish into the caller's `duplicates` reject bucket under a reason that was
+    simply false.
+    """
+    kept, _ = dedup_perceptual_clusters(paths, threshold)
+    return kept
+
+
+def dedup_perceptual_clusters(
+    paths: Iterable[Path],
+    threshold: int = DEFAULT_HAMMING_THRESHOLD,
+) -> tuple[list[Path], dict[Path, list[Path]]]:
+    """`dedup_perceptual`, but cluster membership survives: returns
+    `(kept, clusters)` where `clusters[winner]` lists the near-duplicate
+    frames that lost to it, in seen order.
+
+    The map is what lets a reviewer *see* a burst side-by-side and swap in a
+    better expression instead of trusting the score blindly. Unhashable
+    photos pass through exactly as in `dedup_perceptual` and never cluster.
+    """
+    kept: list[Path] = []
+    hashed_kept: list[Path] = []
+    hashes: list[int] = []
+    clusters: dict[Path, list[Path]] = {}
     for p in paths:
         try:
             h = average_hash(p)
         except Exception:
+            kept.append(p)
             continue
-        if any(hamming_distance(h, kh) <= threshold for _, kh in kept):
+        winner = next(
+            (
+                hashed_kept[i]
+                for i, kh in enumerate(hashes)
+                if hamming_distance(h, kh) <= threshold
+            ),
+            None,
+        )
+        if winner is not None:
+            clusters.setdefault(winner, []).append(p)
             continue
-        kept.append((p, h))
-    return [p for p, _ in kept]
+        kept.append(p)
+        hashed_kept.append(p)
+        hashes.append(h)
+    return kept, clusters
 
 
 def dedup_all(

@@ -1,9 +1,25 @@
 [project]
 name = "photopicker"
 version = "0.14.0"
-description = "ML-driven photo selection for project galleries (Aries, Big7, etc.)"
+description = "Scriptable photo culling for pipelines — deterministic offline scoring, dedup, quality gate, optional AI rerank"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
-authors = [{ name = "Michael Murillo Martinez" }]
+authors = [{ name = "Michael Murillo Martinez", email = "murillomartinezmichael@gmail.com" }]
+keywords = ["photo", "culling", "image-quality", "dedup", "pipeline"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
 dependencies = [
     "pillow>=10.0",
     "pillow-heif>=0.16",
@@ -12,6 +28,12 @@ dependencies = [
     "click>=8.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/murillomartinezmichael/PhotoPicker"
+Repository = "https://github.com/murillomartinezmichael/PhotoPicker"
+Issues = "https://github.com/murillomartinezmichael/PhotoPicker/issues"
+Changelog = "https://github.com/murillomartinezmichael/PhotoPicker/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 clip = [
     "torch>=2.0",
@@ -19,6 +41,12 @@ clip = [
 ]
 vision = [
     "anthropic>=0.34",
+]
+faces = [
+    # Pinned exact: 0.10.22+ dropped the legacy solutions.face_mesh API this
+    # module uses (offline, model bundled in the wheel) for a Tasks API that
+    # downloads model assets at runtime. See photopicker/faces.py docstring.
+    "mediapipe==0.10.21",
 ]
 dev = [
     "pytest>=8.0",

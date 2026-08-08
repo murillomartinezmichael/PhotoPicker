@@ -41,3 +41,20 @@ The review session's decisions (keep/reject per candidate + history) are seriali
 **Why:** LAW #7 (money code is sacred). A rerank over 100 photos is 100 API calls; a single unhandled 429 kills the batch and the partial spend is unaccounted. Explicit control also lets us surface a "Vision rate-limited, sleeping N sec" message in the CLI progress bar so a long session doesn't look hung. The SDK's built-in retry is not observable from our code and defaults are conservative.
 
 **Alternatives considered:** trusting the SDK (opaque — hard to tune per user), forcing sequential calls with sleeps (kills parallelism), circuit-breaker over threshold (overkill for a one-shot CLI).
+
+## D-006 — Aesthetic bonuses saturate at 0.75x base quality (2026-07-13)
+
+`AestheticRules` caps the total aesthetic bonus at `MAX_BONUS = 0.75` and scales
+each rule's contribution down proportionally when the stack runs over.
+
+**Why:** the rules are tiebreakers between technically-sound photos, not a second
+quality score. Additive stacking made every added rule raise the ceiling for the
+photos already at the top — aries had reached 0.97x total weight and big7 1.05x,
+i.e. a photo tripping every rule could nearly double, and a soft-but-pretty shot
+could outrank a sharp one. The cap decouples "add a rule" from "inflate the
+scale," so the next rule sharpens the tiebreak without moving the top.
+
+**Alternatives considered:** normalizing weights to sum to 1 (breaks the "weight
+is a fraction of base quality" contract each profile documents, and rewrites every
+rule's meaning when one is added), a soft/logistic squash (non-obvious numbers in
+`--benchmark`, harder to reason about when tuning weights).
