@@ -43,6 +43,47 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
+  faces:
+    name: faces extra (optional-dependency coverage)
+    runs-on: ubuntu-latest
+    # Verified 2026-08-08 in python:3.11-slim: `pip install -e ".[dev,faces]"`
+    # resolves mediapipe 0.10.21 and all 7 face tests pass in 0.89s.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # mediapipe imports cv2, which needs libGL at import time.
+      - name: System libs for mediapipe/opencv
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgl1 libglib2.0-0
+
+      - name: Install with the faces extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,faces]"
+
+      # The whole point of this job. tests/test_faces.py is gated by
+      # `pytest.importorskip("mediapipe")`, so a broken or uninstallable extra
+      # turns into a silent skip that still reports green -- which is how
+      # Dependabot PR #6 (mediapipe 1.0.0, an API-removing major) collected
+      # five green checks for tests that never ran. Assert the import here so
+      # the failure is the install, not a skip.
+      - name: Assert the extra actually imported
+        run: python -c "import mediapipe; print('mediapipe', mediapipe.__version__)"
+
+      - name: Face/eye tests — must run, not skip
+        run: |
+          set -o pipefail
+          pytest tests/test_faces.py --no-cov -q -rs | tee faces.log
+          if grep -qE "skipped|no tests ran" faces.log; then
+            echo "::error::tests/test_faces.py skipped instead of running -- the faces extra did not take effect"
+            exit 1
+          fi
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10

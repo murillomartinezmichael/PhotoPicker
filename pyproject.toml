@@ -70,7 +70,10 @@ include = ["photopicker*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=photopicker --cov-report=term-missing"
+# -ra: always print the skip/xfail summary. A module-level
+# `pytest.importorskip` collapses a whole suite into one silent "s"; the
+# faces suite hid behind that for months. Skips are now on the console.
+addopts = "-v -ra --cov=photopicker --cov-report=term-missing"
 
 [tool.ruff]
 line-length = 100
