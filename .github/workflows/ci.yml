@@ -50,7 +50,7 @@ jobs:
     # resolves mediapipe 0.10.21 and all 7 face tests pass in 0.89s.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
