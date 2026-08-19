@@ -25,3 +25,9 @@ build/
 .autoimprove/
 .claims/
 SESSION_GOAL.md
+
+# Added 2026-08-19 (fleet-wide .gitignore audit): coverage shards and run logs
+# were the only gaps left in an otherwise complete list.
+.coverage.*
+*.log
+Thumbs.db
