@@ -1,5 +1,7 @@
 # PhotoPicker — photo culling for pipelines
 
+![PhotoPicker — 500 photos in. 20 you would post.](assets/og-card.png)
+
 Every photo-culling product on the market is a GUI fighting for the same
 wedding photographer. PhotoPicker is the other thing: a **scriptable Python
 library + CLI** that turns a raw folder into a curated keeper set from code —
