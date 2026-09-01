@@ -54,7 +54,7 @@ dev = [
     # Pinned exact — CI-reproducibility receipt: unpinned ruff broke two
     # fleet repos in one day (0.15.22-vs-0.16.1 drift). 0.15.20 is verified
     # clean on this tree; bump deliberately, not via pip resolution.
-    "ruff==0.15.20",
+    "ruff==0.16.5",
 ]
 
 [project.scripts]
