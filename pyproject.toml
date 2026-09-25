@@ -46,7 +46,7 @@ faces = [
     # Pinned exact: 0.10.22+ dropped the legacy solutions.face_mesh API this
     # module uses (offline, model bundled in the wheel) for a Tasks API that
     # downloads model assets at runtime. See photopicker/faces.py docstring.
-    "mediapipe==0.10.21",
+    "mediapipe==1.0.1",
 ]
 dev = [
     "pytest>=8.0",
