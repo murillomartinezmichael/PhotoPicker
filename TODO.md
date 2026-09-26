@@ -1,5 +1,24 @@
 # PhotoPicker TODO
 
+## 2026-09-24 — existing export acceptance verified
+
+- Current HEAD `4cf83d4`, initially clean; older dirty-branch wording below is
+  historical. No product code or tests changed in this verification pass.
+- Existing CLI/convert/hardening/EXIF suites: **62 passed in 9.09s**, using synthetic
+  images and StubClassifier. Socket/DNS/process negative controls blocked; no
+  unexpected I/O events. Outputs confined to fresh temporary storage. Initial
+  pytest capture tried reading Windows NUL; disabling unused capture fixed the
+  harness without relaxing the boundary.
+- Independently decoded all **54** JPEG/WebP outputs referenced by nine selections
+  from the actual CLI test manifest, including 400/800px thumbnails: unique paths,
+  correct format/dimensions, all inside the expected output directory.
+- Receipt: fleet job `20260924-213821-codex-007add/result.md`. Earlier manifest-only
+  inspection did not cover these existing tests; no missing export implementation
+  or repair is inferred. PNG data with HEIC filenames exercises dispatch, not the
+  real HEIC codec; model quality, real shoots and package publication remain separate.
+- Next: Michael reviews the existing publication/candidate decisions; preserve
+  private photos and optional-model/download gates. Source ownership unchanged.
+
 ## UPGRADE LANE 2026-08-05→06 (audit-born fixes — this lane made NO commits, NO pushes)
 
 **ANOMALY — read first.** Mid-session at 21:49 EDT, an outside actor (committer
