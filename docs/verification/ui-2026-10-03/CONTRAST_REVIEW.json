@@ -1,0 +1,18 @@
+{
+  "method": "WCAG relative luminance; darkest-overlay bound uses a white source image with black alpha0.88. Not a certification or physical-display observation.",
+  "worst_photo_background_rgb": [
+    31,
+    31,
+    31
+  ],
+  "ratios": {
+    "cyan": 10.962970121694733,
+    "selected_green": 8.237954466197248,
+    "muted": 6.973907998260676
+  },
+  "initial_failures": {
+    "cyan_on_black_alpha_0_6_white_photo": 3.8189448407641535,
+    "selected_green_on_black_alpha_0_65_white_photo": 3.5008626536202248
+  },
+  "manual_review": "Axe cannot resolve gradients/image backgrounds and short symbols. Header colors inspected against dark panels; help first instruction and keyboard-reached Close are visible at all three widths. Remaining physical-device/screen-reader/contrast-mode observations belong to PP-JOINT-ACCEPTANCE."
+}

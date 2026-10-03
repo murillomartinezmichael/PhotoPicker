@@ -10,14 +10,13 @@ if /I "%1"=="pick" goto :pick
 goto :unknown
 
 :cull
-shift
-"%PY%" -c "from photopicker.cli import cull_main; cull_main()" %*
-goto :eof
+rem SHIFT does not change %%*; remove the subcommand from Python's argv instead.
+"%PY%" -c "import sys; from photopicker.cli import cull_main; del sys.argv[1]; cull_main()" %*
+exit /b %errorlevel%
 
 :pick
-shift
-"%PY%" -c "from photopicker.cli import main; main()" --folder %*
-goto :eof
+"%PY%" -c "import sys; from photopicker.cli import main; sys.argv[1:2] = [] if sys.argv[2:3] == ['--help'] else ['--folder']; main()" %*
+exit /b %errorlevel%
 
 :usage
 echo PhotoPicker — cull a shoot to the best N in a local web UI.

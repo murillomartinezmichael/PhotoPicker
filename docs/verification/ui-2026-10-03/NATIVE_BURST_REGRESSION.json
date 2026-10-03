@@ -1,0 +1,61 @@
+{
+  "checks": [
+    {
+      "name": "filename displayed literally without DOM injection",
+      "pass": true
+    },
+    {
+      "name": "filename did not execute script",
+      "pass": true
+    },
+    {
+      "name": "click selects alternative and clears stale AI reason",
+      "pass": true
+    },
+    {
+      "name": "focus image has changed cache identity",
+      "pass": true
+    },
+    {
+      "name": "number key reverses the swap",
+      "pass": true
+    },
+    {
+      "name": "native keyboard activation selects alternative",
+      "pass": true
+    },
+    {
+      "name": "navigation clears and restores the appropriate burst",
+      "pass": true
+    },
+    {
+      "name": "keep advances the visible focus photo",
+      "pass": true
+    },
+    {
+      "name": "reject advances the visible focus photo",
+      "pass": true
+    },
+    {
+      "name": "keyboard keep reject and button undo",
+      "pass": true
+    },
+    {
+      "name": "decision survives page reload",
+      "pass": true
+    },
+    {
+      "name": "actual browser export and manifest response",
+      "pass": true
+    },
+    {
+      "name": "no script errors or external page requests",
+      "pass": true
+    }
+  ],
+  "unexpected_requests": [],
+  "errors": [],
+  "source_sha256": "fe0b004ce137755b9a96bce27cc80f2be2787a4bd3c5ffdb26bd7d6d2115f074",
+  "chrome": "154.0.8037.95",
+  "status": "PASS"
+}

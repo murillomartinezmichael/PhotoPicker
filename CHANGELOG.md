@@ -35,6 +35,13 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/photo?m=` ×5). **391/391 green, ruff-clean.**
 
 ### Fixed
+- **Keyboard and compact local review.** Native photo buttons, labelled dialogs,
+  contained/returned focus, Escape from the export input, reduced motion and
+  readable overlay labels. Header, filters, dialogs and footer fit a 320px viewport;
+  long filenames keep their full accessible name without wrapping score captions.
+- **Windows launcher arguments and failure status.** `run.bat` removes the command
+  from Python's arguments, accepts quoted folder paths, preserves `pick --help`
+  and returns the CLI's nonzero status. Native CRLF is required by `.gitattributes`.
 - **Complete the existing burst-review controls and restart recovery.** The
   previously documented backend had no wired focus-view buttons. Current and
   alternative frames now render with click and number-key selection, keyboard

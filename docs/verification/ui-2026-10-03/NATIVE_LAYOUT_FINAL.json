@@ -1,0 +1,74 @@
+{
+  "source_sha256": "e69e9a3c261e20b285ff9264b7489cd0b4eff3b2c7ae32d8a890d2dafbc50f4b",
+  "checks": [
+    {
+      "name": "caption single line 1280",
+      "pass": true
+    },
+    {
+      "name": "full name accessible 1280",
+      "pass": true
+    },
+    {
+      "name": "grid fits 1280",
+      "pass": true
+    },
+    {
+      "name": "help first instruction visible 1280",
+      "pass": true
+    },
+    {
+      "name": "help close visible by keyboard 1280",
+      "pass": true
+    },
+    {
+      "name": "caption single line 390",
+      "pass": true
+    },
+    {
+      "name": "full name accessible 390",
+      "pass": true
+    },
+    {
+      "name": "grid fits 390",
+      "pass": true
+    },
+    {
+      "name": "help first instruction visible 390",
+      "pass": true
+    },
+    {
+      "name": "help close visible by keyboard 390",
+      "pass": true
+    },
+    {
+      "name": "caption single line 320",
+      "pass": true
+    },
+    {
+      "name": "full name accessible 320",
+      "pass": true
+    },
+    {
+      "name": "grid fits 320",
+      "pass": true
+    },
+    {
+      "name": "help first instruction visible 320",
+      "pass": true
+    },
+    {
+      "name": "help close visible by keyboard 320",
+      "pass": true
+    },
+    {
+      "name": "no browser errors or external page requests",
+      "pass": true
+    }
+  ],
+  "axe": [],
+  "errors": [],
+  "external_requests": [],
+  "chrome": "154.0.8037.95",
+  "status": "PASS"
+}

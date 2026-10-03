@@ -1,0 +1,253 @@
+{
+  "source_sha256": "6452434493b6f9bcd800c2d71621437684bd22005015eaf85fa44850c7de1404",
+  "checks": [
+    {
+      "name": "grid fits 320",
+      "pass": true
+    },
+    {
+      "name": "cards keyboard reachable 320",
+      "pass": true
+    },
+    {
+      "name": "reduced motion 320",
+      "pass": true
+    },
+    {
+      "name": "export fits 320",
+      "pass": true
+    },
+    {
+      "name": "export input labelled 320",
+      "pass": true
+    },
+    {
+      "name": "export Tab wraps 320",
+      "pass": true
+    },
+    {
+      "name": "Escape from input closes export 320",
+      "pass": true
+    },
+    {
+      "name": "export restores focus 320",
+      "pass": true
+    },
+    {
+      "name": "focus dialog labelled 320",
+      "pass": true
+    },
+    {
+      "name": "focus modal has keyboard focus 320",
+      "pass": true
+    },
+    {
+      "name": "focus returns to grid 320",
+      "pass": true
+    },
+    {
+      "name": "help Tab contained 320",
+      "pass": true
+    },
+    {
+      "name": "no browser errors or external page requests",
+      "pass": true
+    }
+  ],
+  "axe": [
+    {
+      "surface": "grid",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": [
+            {
+              "target": [
+                "h1"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                "#src"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                ".total > .n"
+              ],
+              "summary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content"
+            },
+            {
+              "target": [
+                ".total > .label"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                ".keep > .n"
+              ],
+              "summary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content"
+            },
+            {
+              "target": [
+                ".keep > .label"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                ".reject > .n"
+              ],
+              "summary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content"
+            },
+            {
+              "target": [
+                ".reject > .label"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                ".undecided > .n"
+              ],
+              "summary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content"
+            },
+            {
+              "target": [
+                ".undecided > .label"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                "#btn-undo"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                "#btn-export"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined due to a background gradient"
+            },
+            {
+              "target": [
+                ".focused > .idx"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                ".focused > .meta > span:nth-child(1)"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                ".focused > .meta > span:nth-child(2)"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                ".sim-badge"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                "button[aria-label=\"Review synthetic-1.jpg\"] > .idx"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                "button[aria-label=\"Review synthetic-1.jpg\"] > .meta > span:nth-child(1)"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                "button[aria-label=\"Review synthetic-1.jpg\"] > .meta > span:nth-child(2)"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                "kbd:nth-child(4)"
+              ],
+              "summary": "Fix any of the following:\n  Element content contains only non-text characters"
+            },
+            {
+              "target": [
+                "kbd:nth-child(5)"
+              ],
+              "summary": "Fix any of the following:\n  Element content contains only non-text characters"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "surface": "export",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "surface": "focus",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": [
+            {
+              "target": [
+                ".current > .key"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because element contains an image node"
+            },
+            {
+              "target": [
+                "button[aria-label=\"Use: synthetic-3.jpg\"] > .key"
+              ],
+              "summary": "Fix any of the following:\n  Element content is too short to determine if it is actual text content"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "surface": "help",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": [
+            {
+              "target": [
+                "dd:nth-child(2)"
+              ],
+              "summary": "Fix any of the following:\n  Element's background color could not be determined because it partially overlaps other elements"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "external_requests": [],
+  "chrome": "154.0.8037.95",
+  "status": "PASS"
+}

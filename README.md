@@ -2,9 +2,8 @@
 
 ![PhotoPicker — 500 photos in. 20 you would post.](assets/og-card.png)
 
-Every photo-culling product on the market is a GUI fighting for the same
-wedding photographer. PhotoPicker is the other thing: a **scriptable Python
-library + CLI** that turns a raw folder into a curated keeper set from code —
+PhotoPicker is a **scriptable Python library + CLI** that turns a raw
+folder into a curated keeper set from code —
 agency site builds, real-estate feeds, batch e-commerce, CI jobs, overnight
 automation. Deterministic offline pipeline, pip-installable, no GUI required
 (there is a local review UI when you want eyes on it).
@@ -28,15 +27,15 @@ photopicker-cull ./shoot --top 30 --output ./site/img --no-serve --manifest cull
 photopicker-cull ./shoot --top 30 --output ./rated --no-serve --xmp
 ```
 
-## Perf (measured, `scripts/perf_1k.py`)
+## Historical offline performance (`scripts/perf_1k.py`, 2026-07-05)
 
 | Input | Result | Time |
 |---|---|---|
 | 500 photos | 30 keepers | **~9.5 s** |
 | 1000 photos | 30 keepers | **~18 s** |
-| Vision rerank | per photo | ~1.5 s (parallelized 4-wide) |
 
-Offline numbers from a typical dev laptop (Windows, py3.10). Reproduce with
+Historical offline numbers from a dev laptop (Windows, py3.10), not a current
+candidate benchmark or provider latency/billing measurement. Reproduce with
 `python scripts/perf_1k.py --n 1000 --top 30`.
 
 ## Stack
@@ -45,7 +44,15 @@ Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI)
 
 ## Status
 
-**v0.14.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export + XMP ratings + override-rate metric + opt-in face/closed-eye down-rank. **398 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
+**v0.14.0 package metadata; unreleased candidate changes.** Existing cull, local
+review, burst selection/restart, export, profiles and optional model paths remain.
+On 2026-10-03, the local Windows/Python3.10.11 candidate passed 429 offline tests
+with 89.11% Python coverage and pinned Ruff. Actual face inference was excluded
+before collection; model/provider quality is unverified. Keyboard/dialog,
+narrow-screen, burst/export and Windows launcher evidence is saved in
+[the candidate return](docs/verification/ui-2026-10-03/TASK_RETURN.md).
+Fresh wheel/sdist, declared Python3.10/3.11/3.12 CI, joint acceptance and release
+approval remain open. See [STATUS.md](STATUS.md) and [PENDING_MANUAL.md](PENDING_MANUAL.md).
 
 ## Quick start — cull a shoot
 
@@ -231,7 +238,7 @@ See `photopicker/profiles/aries.py` as the reference.
 ```bash
 pip install -e ".[dev]"
 ruff check .
-pytest                        # 398 tests, ~40s (7 face-detection tests skip without [faces])
+pytest                        # Includes real face-model checks when [faces] is installed
 pytest --cov=photopicker
 ```
 

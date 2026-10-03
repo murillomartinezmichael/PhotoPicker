@@ -324,3 +324,13 @@ Source of product truth: ..\AI_HUB.md.
 - [x] Keep/reject updates visible focus; aborted thumbnail delivery does not cause a second response.
 - Evidence: docs/verification/burst-2026-10-03/TASK_RETURN.json.79focused cases (73+6),13native initial checks +4fresh-server checks. Two actual exports match selected synthetic-3.jpg source hash; all originals unchanged.429combined behavioral cases with prior evidence reused. No model/private-photo/CI/release claim.
 - [ ] PP-REVIEW-ACCESSIBILITY: root finish keyboard/dialog focus handling, labels/reduced motion and practical narrow-screen review of existing local UI; fix demonstrated issues using same synthetic browser/handler. Then package/tooling gate and project requirement reconciliation. No optional-model/private-photo/production work.
+
+
+## 2026-10-03 — local candidate preparation exhausted
+
+- [x] PP-REVIEW-ACCESSIBILITY: native buttons, named/contained dialogs, Escape/return focus, reduced motion, contrast, compact layout and long filename captions.
+- [x] PP-WINDOWS-LAUNCHER: actual cmd.exe folder forwarding, quoted paths, help and nonzero status; local CRLF restored.
+- [x] Current Python3.10 offline qualification:429 passed,89.11% coverage including untested optional model code; Ruff0.15.20 clean. Actual face inference excluded.
+- [x] Source-bound readable/JSON requirements, outputs, joint plan, exact remaining gates and historical-status corrections saved in docs/verification/ui-2026-10-03/.
+- Local preparation EXHAUSTED_HERE; not release-ready or released. Gates: PP-TARGET-MATRIX, PP-JOINT-ACCEPTANCE, PP-RELEASE-DECISION. Held proposals stay held. Existing owners/main/untracked native cache preserved.
+- Root continues independent fleet work; Michael/release owner returns gate evidence to this directory. No blanket permission for models, client photos, installs, accounts, push or publication.

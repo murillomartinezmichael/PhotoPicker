@@ -871,7 +871,7 @@ INDEX_HTML = r"""<!doctype html>
     --panel: #0e1218;
     --line: #1c2530;
     --ink: #d8e2ee;
-    --muted: #6b7a90;
+    --muted: #9aaac0;
     --cyan: #4de5ff;
     --magenta: #ff4dd8;
     --keep: #29d17a;
@@ -881,6 +881,8 @@ INDEX_HTML = r"""<!doctype html>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
+    display: flex;
+    flex-direction: column;
     background: var(--bg);
     color: var(--ink);
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
@@ -918,6 +920,7 @@ INDEX_HTML = r"""<!doctype html>
   header {
     position: relative; z-index: 2;
     display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px; flex-shrink: 0;
     padding: 10px 16px;
     background: linear-gradient(180deg, var(--panel), transparent);
     border-bottom: 1px solid var(--line);
@@ -925,6 +928,7 @@ INDEX_HTML = r"""<!doctype html>
   header .brand {
     display: flex; align-items: center; gap: 12px;
     font-weight: 600; letter-spacing: 0.06em;
+    flex: 1 1 280px; min-width: 0; flex-wrap: wrap;
   }
   header .brand .dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -937,8 +941,9 @@ INDEX_HTML = r"""<!doctype html>
     50% { opacity: 0.4; }
   }
   header .brand h1 { font-size: 13px; margin: 0; text-transform: uppercase; }
-  header .brand small { color: var(--muted); }
-  .leds { display: flex; align-items: center; gap: 10px; }
+  header .brand small { color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .actions { display: flex; gap: 6px; }
+  .leds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .led {
     display: flex; align-items: center; gap: 6px;
     padding: 4px 10px;
@@ -975,7 +980,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   main {
     position: relative; z-index: 1;
-    height: calc(100vh - 46px - 30px - 40px);
+    flex: 1; min-height: 0;
     overflow-y: auto;
   }
   .grid {
@@ -985,6 +990,7 @@ INDEX_HTML = r"""<!doctype html>
     padding: 16px;
   }
   .card {
+    padding: 0; color: var(--ink); font: inherit; text-align: left;
     position: relative;
     background: var(--panel);
     border: 1px solid var(--line);
@@ -1003,15 +1009,17 @@ INDEX_HTML = r"""<!doctype html>
   .card .meta {
     position: absolute; bottom: 0; left: 0; right: 0;
     padding: 4px 6px;
-    background: linear-gradient(0deg, rgba(0,0,0,0.75), transparent);
-    display: flex; justify-content: space-between;
+    background: rgba(0,0,0,0.88);
+    display: flex; justify-content: space-between; gap: 8px;
     font-size: 10px;
     color: var(--muted);
     letter-spacing: 0.05em;
   }
+  .card .meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .meta > span:last-child { flex-shrink: 0; white-space: nowrap; }
   .card .idx {
     position: absolute; top: 4px; left: 4px;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.88);
     padding: 2px 6px;
     font-size: 10px; color: var(--muted);
     border: 1px solid var(--line);
@@ -1043,12 +1051,13 @@ INDEX_HTML = r"""<!doctype html>
     letter-spacing: 0.1em;
   }
   footer {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    height: 30px;
+    position: relative; flex-shrink: 0;
+    min-height: 30px;
     background: var(--panel);
     border-top: 1px solid var(--line);
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 16px;
+    flex-wrap: wrap; gap: 6px;
+    padding: 8px 16px;
     z-index: 2;
     font-size: 11px; color: var(--muted);
   }
@@ -1066,7 +1075,7 @@ INDEX_HTML = r"""<!doctype html>
     display: none;
     align-items: center; justify-content: center;
     z-index: 50;
-    padding: 40px;
+    padding: 50px 16px 16px; overflow-y: auto;
     flex-direction: column;
   }
   #focus-view.on { display: flex; }
@@ -1081,6 +1090,7 @@ INDEX_HTML = r"""<!doctype html>
     display: flex; gap: 18px; align-items: center;
     font-size: 12px; color: var(--muted);
     letter-spacing: 0.05em;
+    max-width: 100%; overflow-wrap: anywhere;
   }
   #focus-view .focus-meta strong { color: var(--ink); }
   #focus-view .focus-meta .prompt-line { color: var(--muted); }
@@ -1129,7 +1139,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   #focus-similar .sim-card .key {
     position: absolute; top: 2px; left: 4px;
-    background: rgba(0,0,0,0.65); color: var(--cyan);
+    background: rgba(0,0,0,0.88); color: var(--cyan);
     padding: 0 5px; font-size: 10px;
     letter-spacing: 0.06em;
   }
@@ -1142,7 +1152,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   .card .sim-badge {
     position: absolute; bottom: 26px; left: 4px;
-    background: rgba(0,0,0,0.6); color: var(--cyan);
+    background: rgba(0,0,0,0.88); color: var(--cyan);
     border: 1px solid var(--line);
     padding: 1px 6px; font-size: 9px;
     letter-spacing: 0.08em; text-transform: uppercase;
@@ -1153,6 +1163,7 @@ INDEX_HTML = r"""<!doctype html>
     display: none;
     align-items: center; justify-content: center;
     z-index: 60;
+    padding: 16px;
   }
   #export-dialog.on, #help-dialog.on { display: flex; }
   #export-dialog .box, #help-dialog .box {
@@ -1160,8 +1171,9 @@ INDEX_HTML = r"""<!doctype html>
     border: 1px solid var(--cyan);
     box-shadow: 0 0 24px rgba(77,229,255,0.2);
     padding: 22px 24px;
-    min-width: 420px;
-    max-width: 640px;
+    min-width: 0;
+    width: min(100%, 640px);
+    max-height: 100%; overflow-y: auto;
   }
   #export-dialog h2, #help-dialog h2 {
     margin: 0 0 12px 0;
@@ -1209,6 +1221,7 @@ INDEX_HTML = r"""<!doctype html>
   #help-dialog dd { margin: 0 0 4px 0; color: var(--muted); }
   .filters {
     display: flex; gap: 6px;
+    flex-wrap: wrap; flex-shrink: 0;
     padding: 8px 16px 0 16px;
     position: relative; z-index: 2;
   }
@@ -1231,7 +1244,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   .filters .chip .count {
     display: inline-block; margin-left: 6px;
-    color: var(--muted); opacity: 0.7;
+    color: var(--muted);
   }
   .filters .chip.on .count { color: var(--cyan); opacity: 1; }
   .filters .spacer { flex: 1; }
@@ -1255,7 +1268,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   .card .cap-time {
     position: absolute; top: 4px; right: 4px;
-    background: rgba(0,0,0,0.55); color: var(--muted);
+    background: rgba(0,0,0,0.88); color: var(--muted);
     padding: 2px 6px; font-size: 9px;
     letter-spacing: 0.05em;
     border: 1px solid var(--line);
@@ -1335,9 +1348,25 @@ INDEX_HTML = r"""<!doctype html>
     text-transform: uppercase;
     opacity: 0.7;
   }
+  :is(button, input, select, a, [tabindex]):focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  .skip-link { position: fixed; top: -100px; left: 12px; z-index: 400; background: var(--panel); color: var(--ink); padding: 10px; }
+  .skip-link:focus { top: 12px; }
+  #focus-close { position: absolute; top: 12px; right: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--cyan); padding: 6px 10px; cursor: pointer; }
+  #toast { max-width: calc(100vw - 32px); overflow-wrap: anywhere; }
+  #progress-screen .bar { max-width: 100%; }
+  @media (max-width: 640px) {
+    #focus-view { justify-content: flex-start; }
+    #focus-view .focus-stats { max-width: 100%; }
+    #focus-similar .sim-card { width: 120px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to photos</a>
 <header>
   <div class="brand">
     <span class="dot"></span>
@@ -1348,7 +1377,7 @@ INDEX_HTML = r"""<!doctype html>
   <div class="actions">
     <button id="btn-undo" title="Undo last (U)">Undo</button>
     <button id="btn-export" title="Export keepers (E)">Export</button>
-    <button id="btn-help" title="Help (?)">?</button>
+    <button id="btn-help" title="Help (?)" aria-label="Keyboard help">?</button>
   </div>
 </header>
 <div class="filters" id="filters">
@@ -1358,13 +1387,13 @@ INDEX_HTML = r"""<!doctype html>
   <button class="chip" data-filter="reject">Rejected <span class="count" id="fc-reject">0</span></button>
   <button class="chip" data-filter="rejected-input" id="chip-rejected-input" style="display:none">Pipeline rejects <span class="count" id="fc-rejected-input">0</span></button>
   <div class="spacer"></div>
-  <select class="sort" id="sort-select" title="Sort order">
+  <select class="sort" id="sort-select" title="Sort order" aria-label="Sort photos">
     <option value="score">Sort: score</option>
     <option value="capture-time">Sort: capture time</option>
     <option value="name">Sort: filename</option>
   </select>
 </div>
-<main>
+<main id="main" tabindex="-1" aria-label="Photos">
   <div class="grid" id="grid"></div>
 </main>
 <footer>
@@ -1374,37 +1403,38 @@ INDEX_HTML = r"""<!doctype html>
   <div id="pos"></div>
 </footer>
 
-<div id="focus-view">
-  <div class="close-hint">Enter or Esc to close</div>
+<div id="focus-view" role="dialog" aria-modal="true" aria-labelledby="focus-name" tabindex="-1">
+  <button id="focus-close">Close photo (Esc)</button>
   <img id="focus-img" alt="">
   <div class="focus-meta">
     <span><strong id="focus-name"></strong></span>
     <span id="focus-capture" class="prompt-line"></span>
   </div>
-  <div class="focus-stats" id="focus-stats" aria-label="photo score details">
+  <div class="focus-stats" id="focus-stats" role="group" aria-label="photo score details">
     <span id="focus-quality">quality <span class="val" id="focus-score"></span> <span class="pct" id="focus-pct"></span></span>
     <span id="focus-ai" style="display:none">ai <span class="val" id="focus-ai-score"></span></span>
     <span id="focus-ai-reason" class="reason"></span>
     <span id="focus-culled" class="culled" style="display:none">culled: <span id="focus-reject-reason"></span></span>
   </div>
-  <div id="focus-similar" aria-label="similar frames">
+  <div id="focus-similar" role="group" aria-label="similar frames">
     <div class="sim-label">burst — click a frame or press its number to make it the pick</div>
     <div class="sim-row" id="focus-similar-row"></div>
   </div>
 </div>
 
-<div id="export-dialog">
+<div id="export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title" tabindex="-1">
   <div class="box">
-    <h2>Export keepers</h2>
+    <h2 id="export-title">Export keepers</h2>
     <div style="color: var(--muted); font-size: 11px; margin-bottom: 8px;">
       Copies to a folder. HEIC transcoded to JPG by default. Originals untouched.
     </div>
+    <label for="export-target">Output folder</label>
     <input type="text" id="export-target" placeholder="/absolute/path/to/output" autocomplete="off">
     <label><input type="checkbox" id="export-undecided"> Include undecided (treat un-marked as keepers)</label>
     <label><input type="checkbox" id="export-no-convert"> Keep HEIC as HEIC (no transcode)</label>
     <label><input type="checkbox" id="export-manifest" checked> Write manifest.json alongside exports</label>
     <label><input type="checkbox" id="export-xmp"> Embed XMP star ratings into JPEG copies (Lightroom-readable)</label>
-    <div id="export-result"></div>
+    <div id="export-result" role="status" aria-live="polite"></div>
     <div class="actions">
       <button id="export-cancel">Cancel</button>
       <button id="export-run" class="primary">Copy keepers</button>
@@ -1412,9 +1442,9 @@ INDEX_HTML = r"""<!doctype html>
   </div>
 </div>
 
-<div id="help-dialog">
+<div id="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1">
   <div class="box">
-    <h2>Keyboard</h2>
+    <h2 id="help-title">Keyboard</h2>
     <dl>
       <dt>K</dt><dd>Keep the focused photo, advance to next undecided</dd>
       <dt>X</dt><dd>Reject the focused photo, advance to next undecided</dd>
@@ -1431,7 +1461,7 @@ INDEX_HTML = r"""<!doctype html>
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="progress-screen">
   <h2>photopicker · cull in progress</h2>
@@ -1528,13 +1558,20 @@ function renderGrid() {
   grid.innerHTML = '';
   const visible = visibleCandidates();
   visible.forEach((c, positionInFilter) => {
-    const card = document.createElement('div');
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.setAttribute('aria-label', `Review ${c.filename}${c.decision ? ', ' + c.decision : ''}`);
     const classes = ['card'];
     if (c.decision) classes.push(c.decision);
     if (c.idx === state.focus) classes.push('focused');
     if (c.rejected_reason) classes.push('rejected-input');
     card.className = classes.join(' ');
     card.dataset.idx = c.idx;
+    card.addEventListener('focus', () => {
+      state.focus = c.idx;
+      document.querySelectorAll('#grid .card').forEach((item) => item.classList.toggle('focused', item === card));
+      updatePos();
+    });
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = photoUrl(c.idx, 480, c);
@@ -1589,7 +1626,7 @@ function focusedCard() {
 
 function scrollFocusIntoView() {
   const el = focusedCard();
-  if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  if (el) el.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 function updatePos() {
@@ -1695,6 +1732,38 @@ function qualityPercentile(c) {
   return Math.max(1, Math.round((rank / scores.length) * 100));
 }
 
+const dialogReturns = new Map();
+function pageInert(value) {
+  document.querySelectorAll('body > header, #filters, main, footer, .skip-link').forEach((node) => node.inert = value);
+}
+function openDialog(id, initial) {
+  const dialog = $(id);
+  if (!dialog.classList.contains('on')) dialogReturns.set(id, document.activeElement);
+  dialog.classList.add('on');
+  pageInert(true);
+  if (!dialog.contains(document.activeElement)) $(initial).focus();
+}
+function closeDialog(id, fallback) {
+  const dialog = $(id);
+  if (!dialog.classList.contains('on')) return;
+  dialog.classList.remove('on');
+  pageInert(false);
+  const previous = dialogReturns.get(id);
+  const target = previous?.isConnected && previous !== document.body && previous.getClientRects().length ? previous : fallback();
+  target?.focus();
+  dialogReturns.delete(id);
+}
+function trapDialogTab(ev, dialog) {
+  const items = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')]
+    .filter((node) => node.getClientRects().length);
+  const first = items[0] || dialog, last = items[items.length - 1] || dialog;
+  if (ev.shiftKey && (document.activeElement === first || !items.includes(document.activeElement))) {
+    ev.preventDefault(); last.focus();
+  } else if (!ev.shiftKey && (document.activeElement === last || !items.includes(document.activeElement))) {
+    ev.preventDefault(); first.focus();
+  }
+}
+
 function openFocus() {
   if (!state.session || !state.session.candidates.length) return;
   const c = state.session.candidates.find((x) => x.idx === state.focus)
@@ -1726,7 +1795,7 @@ function openFocus() {
   }
   $('focus-capture').textContent = c.capture_time ? formatCaptureTime(c.capture_time) : '';
   renderSimilar(c);
-  $('focus-view').classList.add('on');
+  openDialog('focus-view', 'focus-close');
 }
 
 function renderSimilar(c) {
@@ -1782,7 +1851,7 @@ async function swapFrame(idx, member) {
     }
   }
 }
-function closeFocus() { $('focus-view').classList.remove('on'); }
+function closeFocus() { closeDialog('focus-view', focusedCard); }
 function toggleFocus() {
   if ($('focus-view').classList.contains('on')) closeFocus(); else openFocus();
 }
@@ -1791,10 +1860,9 @@ function openExport() {
   $('export-result').style.display = 'none';
   $('export-result').classList.remove('err');
   $('export-target').value = state.session ? (state.session.source_folder + '/keepers') : '';
-  $('export-dialog').classList.add('on');
-  setTimeout(() => $('export-target').focus(), 50);
+  openDialog('export-dialog', 'export-target');
 }
-function closeExport() { $('export-dialog').classList.remove('on'); }
+function closeExport() { closeDialog('export-dialog', () => $('btn-export')); }
 
 async function runExport() {
   if (state.swapping) return toast('Wait for the pick change to finish');
@@ -1825,12 +1893,19 @@ async function runExport() {
   toast(msg);
 }
 
-function openHelp() { $('help-dialog').classList.add('on'); }
-function closeHelp() { $('help-dialog').classList.remove('on'); }
+function openHelp() { openDialog('help-dialog', 'help-close'); }
+function closeHelp() { closeDialog('help-dialog', () => $('btn-help')); }
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.target.tagName === 'INPUT') return;
+  if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
   const key = ev.key.toLowerCase();
+  const dialog = document.querySelector('#export-dialog.on, #help-dialog.on, #focus-view.on');
+  if (dialog && key === 'tab') { trapDialogTab(ev, dialog); return; }
+  if (dialog && key === 'escape') {
+    ({'export-dialog': closeExport, 'help-dialog': closeHelp, 'focus-view': closeFocus})[dialog.id]();
+    ev.preventDefault(); return;
+  }
+  if (ev.target.closest('input, textarea, select, [contenteditable="true"]')) return;
   if ($('export-dialog').classList.contains('on')) {
     if (key === 'escape') closeExport();
     return;
@@ -1862,7 +1937,7 @@ document.addEventListener('keydown', (ev) => {
   else if (key === 'arrowright') { move(1); ev.preventDefault(); }
   else if (key === 'arrowup') { move(-4); ev.preventDefault(); }
   else if (key === 'arrowdown') { move(4); ev.preventDefault(); }
-  else if (key === 'enter') { toggleFocus(); ev.preventDefault(); }
+  else if (key === 'enter' && !ev.target.closest('button, a')) { toggleFocus(); ev.preventDefault(); }
   else if (key === 'e') { openExport(); ev.preventDefault(); }
   else if (key === 'f') { cycleFilter(); ev.preventDefault(); }
   else if (key === '?') { openHelp(); ev.preventDefault(); }
@@ -1884,6 +1959,7 @@ $('btn-help').addEventListener('click', openHelp);
 $('export-cancel').addEventListener('click', closeExport);
 $('export-run').addEventListener('click', runExport);
 $('help-close').addEventListener('click', closeHelp);
+$('focus-close').addEventListener('click', closeFocus);
 $('focus-view').addEventListener('click', (ev) => {
   if (ev.target.id === 'focus-view') closeFocus();
 });
