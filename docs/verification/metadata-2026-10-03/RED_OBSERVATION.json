@@ -1,0 +1,53 @@
+{
+  "controls": [
+    "socket",
+    "private",
+    "write"
+  ],
+  "heic_source_unchanged": true,
+  "libheif": {
+    "libheif": "1.23.0",
+    "HEIF": "x265 HEVC encoder (4.2+1-e444744)",
+    "AVIF": "",
+    "encoders": {
+      "x265": "x265 HEVC encoder (4.2+1-e444744)",
+      "mask": "mask"
+    },
+    "decoders": {
+      "libde265": "libde265 HEVC decoder, version 1.1.1"
+    }
+  },
+  "records": [
+    {
+      "file": "fixtures\\nested-exif.jpg",
+      "format": "JPEG",
+      "size": [
+        960,
+        640
+      ],
+      "exif_capture": "2026:10:03 09:15:00",
+      "api_capture": null
+    },
+    {
+      "file": "fixtures\\actual-codec.heic",
+      "format": "HEIF",
+      "size": [
+        960,
+        640
+      ],
+      "exif_capture": "2026:10:03 09:15:00",
+      "api_capture": null
+    },
+    {
+      "file": "export\\actual-codec.jpg",
+      "format": "JPEG",
+      "size": [
+        960,
+        640
+      ],
+      "exif_capture": null,
+      "api_capture": null
+    }
+  ],
+  "heic_header_hex": "0000001c6674797068656963000000006d696631686569636d69616600000195"
+}

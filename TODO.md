@@ -1,5 +1,11 @@
 # PhotoPicker TODO
 
+## 2026-10-03 — capture dates and real HEIF export
+
+- [x] PP-METADATA: standard nested camera timestamps now reach gallery metadata; saved JPEG/WebP and file thumbnails preserve EXIF. Reproduced11new failures before correction. Originals and transient vision/preview behavior remain unchanged.
+- [x]80focused tests pass, including real HEIF decoding/public publish path. Actual4exports and PhotoPick manifest preserve capture date/dimensions/references. Pinned Ruff passes. Evidence: docs/verification/metadata-2026-10-03/TASK_RETURN.json; synthetic fixture committed with tests.
+- [ ] Continue remaining core/profile/culler/review UI and packaging qualification using synthetic data and installed tools. Preserve Michael candidate/main/publication, real-photo and optional-model gates. CHECKPOINTED; not full product completion or release.
+
 ## 2026-09-24 — existing export acceptance verified
 
 - Current HEAD `4cf83d4`, initially clean; older dirty-branch wording below is

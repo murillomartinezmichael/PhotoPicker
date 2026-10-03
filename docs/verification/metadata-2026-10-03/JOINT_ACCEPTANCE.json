@@ -1,0 +1,24 @@
+[
+  {
+    "id": "PP-NESTED-DATE",
+    "expected": "Standard nested camera capture time appears in the gallery manifest instead of unknown or modification date",
+    "agent_observation": "Real syntheticJPEG/HEIF fixtures and actual PhotoPick manifest pass",
+    "michael_observation": null,
+    "reconciliation": null
+  },
+  {
+    "id": "PP-METADATA-EXPORT",
+    "expected": "SavedJPEG/WebP/main/thumbnail retain capture time and camera metadata; source bytes remain unchanged",
+    "agent_observation": "80focusedcases and4decodedactualexports pass; original fixture unchanged",
+    "michael_observation": null,
+    "reconciliation": null
+  },
+  {
+    "id": "PP-PRIVATE-SHOOT",
+    "expected": "Approved real input set produces acceptable profile choices/export chronology without source modification",
+    "prerequisite": "Exact private-photo custody/access and optional-model authorization; current guard does not allow this",
+    "agent_observation": "NOT_RUN",
+    "michael_observation": null,
+    "reconciliation": null
+  }
+]

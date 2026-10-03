@@ -1,0 +1,70 @@
+{
+  "records": [
+    {
+      "path": "fixtures\\actual-codec.heic",
+      "format": "HEIF",
+      "size": [
+        960,
+        640
+      ],
+      "capture_time": "2026-10-03T09:15:00",
+      "sha256": "1b8d7b5451211e83a70d5710acd24f903c1289f184a10721798f3a4fb529a786"
+    },
+    {
+      "path": "fixtures\\nested-exif.jpg",
+      "format": "JPEG",
+      "size": [
+        960,
+        640
+      ],
+      "capture_time": "2026-10-03T09:15:00",
+      "sha256": "d2430e985b3bf82dbc53a6753ad6b7a127a542242c1994603b60f2cef373f97f"
+    },
+    {
+      "path": "accepted-export\\before-01.jpg",
+      "format": "JPEG",
+      "size": [
+        960,
+        640
+      ],
+      "capture_time": "2026-10-03T09:15:00",
+      "sha256": "3c5b6fd2fa88911f380e460913d75fbea570e28af7257ee22e4b42051bcf7821"
+    },
+    {
+      "path": "accepted-export\\before-01.webp",
+      "format": "WEBP",
+      "size": [
+        960,
+        640
+      ],
+      "capture_time": "2026-10-03T09:15:00",
+      "sha256": "a2427379e8c5d60b9ef96a95259c7eb86ff76a68e177f8fae499073f7f324a64"
+    },
+    {
+      "path": "accepted-export\\before-01-320w.jpg",
+      "format": "JPEG",
+      "size": [
+        320,
+        213
+      ],
+      "capture_time": "2026-10-03T09:15:00",
+      "sha256": "1c746a50a6d13c35d86557a8f4c7b7762b5eac7ec2cfb737bf9fc75b313c831b"
+    },
+    {
+      "path": "accepted-export\\before-01-320w.webp",
+      "format": "WEBP",
+      "size": [
+        320,
+        213
+      ],
+      "capture_time": "2026-10-03T09:15:00",
+      "sha256": "4db9b111e86ef4119d9b9b252ba8cdceb48ad3b5bde14a355c6c2e440e42bc24"
+    }
+  ],
+  "source_unchanged": true,
+  "controls": [
+    "socket",
+    "private",
+    "write"
+  ]
+}
