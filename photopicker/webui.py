@@ -161,6 +161,22 @@ class Session:
         return {"total": len(self.candidates), "keep": keeps, "reject": rejects, "undecided": undecided}
 
 
+def _promote_similar(candidate: Candidate, member: int) -> None:
+    """Exchange two already-discovered frames, retaining fresh metadata."""
+    from .exif import get_capture_time
+
+    entry = candidate.similar[member]
+    old = {"path": candidate.path, "filename": candidate.filename, "score": candidate.score}
+    candidate.path = str(entry["path"])
+    candidate.filename = str(entry["filename"])
+    candidate.score = float(entry.get("score", 0.0))
+    candidate.similar[member] = old
+    candidate.ai_score = None
+    candidate.ai_reason = ""
+    capture = get_capture_time(Path(candidate.path))
+    candidate.capture_time = capture.isoformat() if capture else None
+
+
 class SessionStore:
     """Thread-safe wrapper around a Session on disk."""
 
@@ -222,24 +238,13 @@ class SessionStore:
         frame. Deliberately not part of the undo history: it changes *which*
         file the slot points at, not the keep/reject decision on the slot.
         """
-        from .exif import get_capture_time
-
         with self._lock:
             if not (0 <= idx < len(self.session.candidates)):
                 raise IndexError(idx)
             c = self.session.candidates[idx]
             if not (0 <= member < len(c.similar)):
                 raise IndexError(member)
-            entry = c.similar[member]
-            old = {"path": c.path, "filename": c.filename, "score": c.score}
-            c.path = str(entry["path"])
-            c.filename = str(entry["filename"])
-            c.score = float(entry.get("score", 0.0))
-            c.similar[member] = old
-            c.ai_score = None
-            c.ai_reason = ""
-            capture = get_capture_time(Path(c.path))
-            c.capture_time = capture.isoformat() if capture else None
+            _promote_similar(c, member)
             self._save()
 
     def keepers(self) -> list[Path]:
@@ -333,19 +338,43 @@ def _build_export_manifest(
 
 
 def _load_session_from_disk(session_path: Path, candidates: list[Candidate]) -> list[Candidate]:
-    """Restore prior decisions from `.photopicker-session.json` if the candidate
-    set matches by path. Returns the (possibly-updated) candidates list."""
+    """Restore a selection only within an identical, freshly discovered group.
+
+    Saved paths identify members; they never supply new files or stale scores.
+    Ambiguous/malformed records and changed clusters retain the new cull result.
+    """
     if not session_path.exists():
         return candidates
     try:
         prior = json.loads(session_path.read_text())
     except (OSError, json.JSONDecodeError):
         return candidates
-    by_path = {c["path"]: c for c in prior.get("candidates", [])}
+    if not isinstance(prior, dict) or not isinstance(prior.get("candidates"), list):
+        return candidates
+    by_group: dict[frozenset[str], list[dict]] = {}
+    for saved in prior["candidates"]:
+        if not isinstance(saved, dict) or not isinstance(saved.get("path"), str):
+            continue
+        similar = saved.get("similar", [])
+        if not isinstance(similar, list) or any(
+            not isinstance(item, dict) or not isinstance(item.get("path"), str)
+            for item in similar
+        ):
+            continue
+        group = frozenset([saved["path"], *(item["path"] for item in similar)])
+        by_group.setdefault(group, []).append(saved)
     for cand in candidates:
-        prior_c = by_path.get(cand.path)
-        if prior_c is not None:
-            cand.decision = prior_c.get("decision", "") or ""
+        group = frozenset([cand.path, *(item["path"] for item in cand.similar)])
+        matches = by_group.get(group, [])
+        if len(matches) != 1:
+            continue
+        saved = matches[0]
+        if saved["path"] != cand.path:
+            member = next(i for i, item in enumerate(cand.similar) if item["path"] == saved["path"])
+            _promote_similar(cand, member)
+        decision = saved.get("decision", "")
+        if decision in ("keep", "reject", ""):
+            cand.decision = decision
     return candidates
 
 
@@ -488,6 +517,9 @@ def make_handler(
                     self._send_json({"status": "ok"})
                 else:
                     self._send_text(HTTPStatus.NOT_FOUND, "not found")
+            except ConnectionError:
+                # Fast navigation cancels thumbnail downloads; the client is gone.
+                return
             except Exception:
                 log.exception("GET %s failed", self.path)
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
@@ -517,6 +549,8 @@ def make_handler(
                     shutdown_event.set()
                 else:
                     self._send_text(HTTPStatus.NOT_FOUND, "not found")
+            except ConnectionError:
+                return
             except Exception:
                 log.exception("POST %s failed", self.path)
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
@@ -594,7 +628,7 @@ def make_handler(
                     self.wfile.flush()
                     if snap["finished"]:
                         break
-            except (BrokenPipeError, ConnectionResetError):
+            except ConnectionError:
                 # Browser closed the tab; that's the happy path.
                 return
 
@@ -1080,7 +1114,12 @@ INDEX_HTML = r"""<!doctype html>
     background: var(--panel);
     cursor: pointer;
     transition: box-shadow 100ms ease;
+    padding: 0;
+    color: var(--ink);
+    font: inherit;
   }
+  #focus-similar .sim-card:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  #focus-similar .sim-card:disabled { opacity: 0.6; cursor: wait; }
   #focus-similar .sim-card img { width: 100%; display: block; }
   #focus-similar .sim-card:hover { box-shadow: 0 0 8px rgba(77,229,255,0.4); }
   #focus-similar .sim-card.current {
@@ -1405,7 +1444,7 @@ INDEX_HTML = r"""<!doctype html>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
-const state = { session: null, focus: 0, filter: 'all', sort: 'score' };
+const state = { session: null, focus: 0, filter: 'all', sort: 'score', swapping: false };
 
 function photoUrl(idx, width, c, member) {
   // The v param busts the browser cache when a swap changes which file
@@ -1578,6 +1617,7 @@ function toast(msg, ms = 1400) {
 
 async function decide(decision) {
   if (!state.session) return;
+  if (state.swapping) return toast('Wait for the pick change to finish');
   const idx = state.focus;
   const focused = state.session.candidates.find((c) => c.idx === idx);
   if (focused && focused.rejected_reason) {
@@ -1592,6 +1632,7 @@ async function decide(decision) {
   renderGrid();
   updatePos();
   if (decision === 'keep' || decision === 'reject') advanceToUndecided();
+  if ($('focus-view').classList.contains('on')) openFocus();
 }
 
 function advanceToUndecided() {
@@ -1627,6 +1668,7 @@ function move(delta) {
 }
 
 async function undo() {
+  if (state.swapping) return toast('Wait for the pick change to finish');
   const r = await postJSON('/undo');
   if (!r.ok) return toast('nothing to undo');
   if (r.json.undone_idx == null) return toast('nothing to undo');
@@ -1659,7 +1701,8 @@ function openFocus() {
          || state.session.candidates[0];
   if (!c) return;
   state.focus = c.idx;
-  $('focus-img').src = `/photo/${c.idx}?w=1200`;
+  $('focus-img').src = photoUrl(c.idx, 1200, c);
+  $('focus-img').alt = c.filename;
   $('focus-name').textContent = c.filename;
   if (c.rejected_reason) {
     // Pipeline reject — its 0.0 score is a sentinel, not a measurement.
@@ -1682,7 +1725,62 @@ function openFocus() {
     $('focus-ai-reason').textContent = '';
   }
   $('focus-capture').textContent = c.capture_time ? formatCaptureTime(c.capture_time) : '';
+  renderSimilar(c);
   $('focus-view').classList.add('on');
+}
+
+function renderSimilar(c) {
+  const row = $('focus-similar-row');
+  row.replaceChildren();
+  row.setAttribute('aria-busy', String(state.swapping));
+  const hasSimilar = !c.rejected_reason && c.similar && c.similar.length > 0;
+  $('focus-similar').classList.toggle('on', !!hasSimilar);
+  $('focus-view').classList.toggle('has-similar', !!hasSimilar);
+  if (!hasSimilar) return;
+  [c, ...c.similar].forEach((frame, position) => {
+    const member = position === 0 ? null : position - 1;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sim-card' + (position === 0 ? ' current' : '');
+    button.setAttribute('aria-pressed', String(position === 0));
+    button.setAttribute('aria-label', `${position === 0 ? 'Current pick' : 'Use'}: ${frame.filename}`);
+    button.disabled = state.swapping;
+    const img = document.createElement('img');
+    img.src = photoUrl(c.idx, 264, c, member);
+    img.alt = '';
+    const key = document.createElement('span');
+    key.className = 'key';
+    key.textContent = position === 0 ? '1 · pick' : position < 9 ? String(position + 1) : 'pick';
+    const label = document.createElement('div');
+    label.className = 'sim-meta';
+    label.textContent = frame.filename;
+    button.append(img, key, label);
+    if (member != null) button.addEventListener('click', () => swapFrame(c.idx, member));
+    row.appendChild(button);
+  });
+}
+
+async function swapFrame(idx, member) {
+  if (state.swapping) return;
+  state.swapping = true;
+  const candidate = state.session.candidates.find((c) => c.idx === idx);
+  renderSimilar(candidate);
+  try {
+    const r = await postJSON('/swap', {idx, member});
+    if (!r.ok) throw new Error(r.text || `HTTP ${r.status}`);
+    state.session = r.json.state;
+    renderGrid();
+    updatePos();
+    toast('Pick changed — select the previous frame to switch back');
+  } catch (error) {
+    toast('Could not change pick: ' + error.message);
+  } finally {
+    state.swapping = false;
+    if ($('focus-view').classList.contains('on')) {
+      openFocus();
+      if (state.focus === idx) $('focus-similar-row').querySelector('.current')?.focus();
+    }
+  }
 }
 function closeFocus() { $('focus-view').classList.remove('on'); }
 function toggleFocus() {
@@ -1699,6 +1797,7 @@ function openExport() {
 function closeExport() { $('export-dialog').classList.remove('on'); }
 
 async function runExport() {
+  if (state.swapping) return toast('Wait for the pick change to finish');
   const target = $('export-target').value.trim();
   if (!target) return;
   const body = {
@@ -1741,7 +1840,15 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if ($('focus-view').classList.contains('on')) {
+    if (key === 'enter' && ev.target.closest('button')) return;
     if (key === 'escape' || key === 'enter') { closeFocus(); ev.preventDefault(); return; }
+    if (/^[1-9]$/.test(key)) {
+      const candidate = state.session.candidates.find((c) => c.idx === state.focus);
+      const member = Number(key) - 2;
+      if (member >= 0 && member < (candidate.similar || []).length) swapFrame(candidate.idx, member);
+      ev.preventDefault();
+      return;
+    }
     if (key === 'k') { decide('keep'); ev.preventDefault(); return; }
     if (key === 'x') { decide('reject'); ev.preventDefault(); return; }
     if (key === 'arrowleft') { move(-1); openFocus(); ev.preventDefault(); return; }

@@ -426,6 +426,80 @@ def test_store_swap_is_reversible(tmp_path: Path):
     assert c.similar[0]["path"] == str(loser)
 
 
+def test_swapped_selection_and_decision_survive_rebuild(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    store.decide(0, "keep")
+    store.swap(0, 0)
+    rebuilt = build_session(
+        tmp_path, [winner], scores={winner: 0.95, loser: 0.65},
+        ai_scores={winner: (8, "old winner only")}, clusters={winner: [loser]},
+    )
+    current = rebuilt.candidates[0]
+    assert current.path == str(loser)
+    assert current.filename == loser.name
+    assert current.score == pytest.approx(0.65)  # fresh scores, not saved ones
+    assert current.decision == "keep"
+    assert current.similar[0]["path"] == str(winner)
+    assert current.ai_score is None and current.ai_reason == ""
+
+
+def test_changed_burst_does_not_restore_previous_selection(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    store.decide(0, "keep")
+    store.swap(0, 0)
+    replacement = _make(tmp_path, "new-frame.png", 3)
+    rebuilt = build_session(tmp_path, [winner], clusters={winner: [replacement]})
+    assert rebuilt.candidates[0].path == str(winner)
+    assert rebuilt.candidates[0].decision == ""
+    assert rebuilt.candidates[0].similar[0]["path"] == str(replacement)
+
+
+@pytest.mark.parametrize("saved", [
+    [], {"candidates": None}, {"candidates": [None]},
+    {"candidates": [{"path": "not-current", "similar": None}]},
+])
+def test_malformed_saved_session_keeps_fresh_candidates(tmp_path: Path, saved):
+    image = _make(tmp_path, "fresh.png")
+    (tmp_path / ".photopicker-session.json").write_text(json.dumps(saved))
+    rebuilt = build_session(tmp_path, [image])
+    assert rebuilt.candidates[0].path == str(image)
+    assert rebuilt.candidates[0].decision == ""
+
+
+def test_saved_burst_cannot_add_a_path_outside_current_candidates(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    saved = store.get().to_dict()
+    saved["candidates"][0].update(path="/unapproved-image.jpg", decision="keep")
+    saved["candidates"][0]["similar"] = [{"path": str(winner)}, {"path": str(loser)}]
+    store.session_path.write_text(json.dumps(saved))
+    rebuilt = build_session(tmp_path, [winner], clusters={winner: [loser]})
+    assert rebuilt.candidates[0].path == str(winner)
+    assert rebuilt.candidates[0].decision == ""
+
+
+@pytest.mark.parametrize("method,path", [("do_GET", "/health"), ("do_POST", "/shutdown")])
+@pytest.mark.parametrize("error", [BrokenPipeError, ConnectionResetError, ConnectionAbortedError])
+def test_disconnected_browser_does_not_trigger_second_response(method, path, error):
+    from email.message import Message
+
+    from photopicker.webui import _ThumbCache, make_handler
+
+    handler = object.__new__(make_handler(None, _ThumbCache(), threading.Event()))
+    handler.path = path
+    handler.headers = Message()
+    handler.headers["Content-Type"] = "application/json"
+    handler._local_request = lambda: True
+    responses = []
+
+    def disconnected(status, *args, **kwargs):
+        responses.append(status)
+        raise error("synthetic browser disconnected")
+
+    handler._send_text = disconnected
+    getattr(handler, method)()
+    assert responses == [200]
+
+
 def test_store_swap_bad_idx_raises(tmp_path: Path):
     store, _, _ = _store_with_burst(tmp_path)
     with pytest.raises(IndexError):

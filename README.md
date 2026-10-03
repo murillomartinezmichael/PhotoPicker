@@ -58,6 +58,15 @@ photopicker-cull demo/shoot --top 10      # Opens the web UI at http://127.0.0.1
 
 ![Cull grid on the synthetic demo shoot: 40 frames culled to the top 10, with LED keep/reject/undecided counters, filter chips, per-frame quality scores, and "+3 similar" burst-cluster badges](docs/img/cull-grid.jpg)
 
+Open a card with a similar-frame badge to compare the current pick with its
+alternatives. Click an alternative or press its displayed number (`2`–`9`);
+`1` identifies the current pick. Every alternative remains reachable as a normal
+button, including groups larger than nine frames. Swapping again can restore the
+previous pick; `U` undoes keep/reject decisions, not frame selection. A changed
+frame clears the previous frame's AI explanation and gets a fresh preview URL.
+The chosen frame and keep/reject decision resume after restart when the same
+photo group is rediscovered. Changed groups use the fresh cull result.
+
 ![Focus view of one keeper from the demo shoot: the full-size frame above the "why" panel — quality 70, top 10% of this shoot](docs/img/cull-focus.jpg)
 
 *Real captures of the web UI reviewing `demo/shoot` — the synthetic frames

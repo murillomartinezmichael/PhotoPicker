@@ -315,3 +315,12 @@ Source of product truth: ..\AI_HUB.md.
 - Evidence: docs/verification/product-2026-10-03/TASK_RETURN.json;416 distinct passing behavioral cases across current/reused evidence (limitations retained),83 focused cases without denied I/O, six native Chrome journey checks, actual synthetic image + manifest.
 - [ ] PP-REVIEW-BURST: root completes existing similar-frame UI wiring and validates click/number-key swap through the existing API. Then finish keyboard/dialog/accessibility review and fresh packaging qualification where installed tooling permits; preserve model/private-photo/release gates.
 - Status CHECKPOINTED; main unchanged, no push/publication. Michael joint observations and manual gates in JOINT_ACCEPTANCE.json/TASK_RETURN.json.
+
+
+## 2026-10-03 — burst review and restart recovery completed locally
+
+- [x] Existing focus-view similar-frame controls wired: literal thumbnail labels, click/number/Enter selection, current-image cache identity and stale-AI clearing.
+- [x] Fresh-server reconstruction restores the selected frame and decision only for identical current group membership; malformed/foreign groups cannot introduce paths or stale scores.
+- [x] Keep/reject updates visible focus; aborted thumbnail delivery does not cause a second response.
+- Evidence: docs/verification/burst-2026-10-03/TASK_RETURN.json.79focused cases (73+6),13native initial checks +4fresh-server checks. Two actual exports match selected synthetic-3.jpg source hash; all originals unchanged.429combined behavioral cases with prior evidence reused. No model/private-photo/CI/release claim.
+- [ ] PP-REVIEW-ACCESSIBILITY: root finish keyboard/dialog focus handling, labels/reduced motion and practical narrow-screen review of existing local UI; fix demonstrated issues using same synthetic browser/handler. Then package/tooling gate and project requirement reconciliation. No optional-model/private-photo/production work.

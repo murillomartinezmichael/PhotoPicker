@@ -1,0 +1,56 @@
+{
+  "candidate_source_sha256": "2e9a45ed35c207d745da2ae393347cf7e5d6fef6e09d24aa8ad32d47d9c8ce11",
+  "owner": "Michael with Codex /root",
+  "status": "PREPARED_NOT_JOINTLY_ACCEPTED",
+  "checks": [
+    {
+      "id": "PP-J01",
+      "action": "Open a synthetic shoot in local UI; keep/reject/undo, reload",
+      "expected": "Decisions persist and undo restores prior state",
+      "agent_observation": "Passed actual Chrome and handler",
+      "michael_observation": null,
+      "reconciliation": null
+    },
+    {
+      "id": "PP-J02",
+      "action": "Export one keeper with manifest into a new fixture folder",
+      "expected": "One readable image and manifest; originals unchanged",
+      "agent_observation": "Passed; saved sample export",
+      "michael_observation": null,
+      "reconciliation": null
+    },
+    {
+      "id": "PP-J03",
+      "action": "Review a filename containing HTML-like characters",
+      "expected": "Literal filename; no DOM/script injection",
+      "agent_observation": "Native red reproduced; corrected native pass",
+      "michael_observation": null,
+      "reconciliation": null
+    },
+    {
+      "id": "PP-J04",
+      "action": "Use similar-frame click and numbered keyboard controls",
+      "expected": "Chosen alternative becomes selected, survives reload and export",
+      "agent_observation": "PASSED: actual click/number/Enter selection, cache-identity change, exact-group fresh-process restoration, failed-request recovery and selected-frame export. Source hashes and originals matched.",
+      "michael_observation": null,
+      "reconciliation": null
+    },
+    {
+      "id": "PP-J05",
+      "action": "Navigate all review dialogs using keyboard and at practical display widths",
+      "expected": "Visible focus, predictable close/return focus, readable layout",
+      "agent_observation": "Pending; desktop screenshots only",
+      "michael_observation": null,
+      "reconciliation": null
+    },
+    {
+      "id": "PP-J06",
+      "action": "With approved photo/model custody, compare intended Big7/Aries selections",
+      "expected": "Correct categories/phases, dates and client-approved assets",
+      "agent_observation": "Gated; synthetic/stub tests cannot establish semantic quality",
+      "michael_observation": null,
+      "reconciliation": null
+    }
+  ],
+  "instructions": "Record separate observations against the exact candidate. Reconcile disagreement before accepting. Real media/model actions require the recorded approval route; do not upload private images."
+}

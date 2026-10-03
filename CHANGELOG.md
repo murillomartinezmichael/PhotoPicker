@@ -35,6 +35,13 @@ Adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/photo?m=` ×5). **391/391 green, ruff-clean.**
 
 ### Fixed
+- **Complete the existing burst-review controls and restart recovery.** The
+  previously documented backend had no wired focus-view buttons. Current and
+  alternative frames now render with click and number-key selection, keyboard
+  activation and literal labels. Exact current group membership permits restoring
+  the chosen frame without trusting additional saved paths or stale scores.
+  Keep/reject updates the visible focus image, and canceled thumbnail requests
+  no longer trigger a second response or a misleading server traceback.
 - **`CullResult.scores` public contract restored to keepers-only.** An
   in-flight version of the burst-swap feature (2026-07-19) leaked cluster-loser
   paths into `scores`, which broke `pick_photos`/`cull` callers relying on
