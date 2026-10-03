@@ -1,8 +1,16 @@
 # PUBLISHING — releasing photopicker to PyPI
 
-Package is build-verified and ready. This is the exact sequence for Michael to run
-once he has a PyPI account + API token (account/token creation is a manual gate —
-agents don't own accounts or credentials).
+The earlier package-build receipt applies only to its historical source. The
+2026-10-03 candidate has newer fixes and is **not yet release-qualified**: finish
+the remaining local review UI work, qualify a fresh wheel/sdist and target Python
+matrix, and have Michael approve the candidate/main/version decision. Existing
+`dist/` files do not prove the new source was built. The installed verification
+environment has `build` 1.5.0 and setuptools 78.1.0 but lacks the declared
+`wheel` build dependency; no installation or upload was performed.
+
+The sequence below is an operator release procedure, not permission to publish.
+Account/token creation and any upload remain Michael's gates; agents do not own
+accounts or credentials. Current local evidence: `docs/verification/product-2026-10-03/TASK_RETURN.json`.
 
 ## One-time setup
 

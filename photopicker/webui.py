@@ -471,6 +471,8 @@ def make_handler(
 
         # ---- routing ----
         def do_GET(self) -> None:  # noqa: N802
+            if not self._local_request():
+                return
             try:
                 if self.path == "/" or self.path.startswith("/?"):
                     self._send_html()
@@ -491,6 +493,12 @@ def make_handler(
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
 
         def do_POST(self) -> None:  # noqa: N802
+            if not self._local_request():
+                return
+            # Browser forms/no-cors requests cannot send application/json.
+            if self.headers.get_content_type() != "application/json":
+                self._send_text(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "application/json required")
+                return
             try:
                 if self.path == "/decision":
                     self._handle_decision()
@@ -514,6 +522,22 @@ def make_handler(
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
 
         # ---- helpers ----
+        def _local_request(self) -> bool:
+            """Loopback binding alone does not stop browser-originated requests."""
+            port = self.server.server_address[1]
+            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if port == 80:
+                hosts.update({"127.0.0.1", "localhost"})
+            authorities = self.headers.get_all("Host", [])
+            origins = self.headers.get_all("Origin", [])
+            if (len(authorities) != 1 or authorities[0] not in hosts
+                    or len(origins) > 1
+                    or (origins and origins[0] != f"http://{authorities[0]}")
+                    or self.headers.get("Sec-Fetch-Site", "none") not in {"same-origin", "none"}):
+                self._send_text(HTTPStatus.FORBIDDEN, "local same-origin requests only")
+                return False
+            return True
+
         def _read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0") or 0)
             if not length:
@@ -1498,7 +1522,11 @@ function renderGrid() {
     const scoreBits = [];
     if (!c.rejected_reason) scoreBits.push(`q ${(c.score * 100).toFixed(0)}`);
     if (c.ai_score != null) scoreBits.push(`ai ${c.ai_score}`);
-    meta.innerHTML = `<span>${c.filename}</span><span>${scoreBits.join(' · ')}</span>`;
+    const name = document.createElement('span');
+    name.textContent = c.filename;
+    const score = document.createElement('span');
+    score.textContent = scoreBits.join(' · ');
+    meta.append(name, score);
     card.appendChild(meta);
     if (!c.rejected_reason && c.similar && c.similar.length) {
       const sim = document.createElement('div');

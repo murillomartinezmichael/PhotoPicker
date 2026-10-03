@@ -305,3 +305,13 @@ Source of product truth: ..\AI_HUB.md.
 - [ ] Reason panel in the focus view (half day): the session JSON already carries per-photo score, ai_score, and an ai_reason string the UI never renders — display them plus a client-side sharpness percentile in the Enter view. Matches FilterPixel's verified headline differentiator and the confirmed no-reasoning criticism of Aftershoot.
 - [ ] Override-rate line at export (2–3 hours): compare the K/X decisions already persisted in .photopicker-session.json against pipeline picks and print 'kept 27/30 — 10% override'. The honest accuracy metric per the verified Tov Studio teardown, and the seed for a defensible README accuracy claim.
 - [ ] XMP ratings export (1 day): embed xmp:Rating into exported JPEG copies via a stdlib APP1 segment splice — corrected from the original sidecar spec, since Lightroom ignores .xmp sidecars for JPEG/HEIC. Copies Optyx's verified Lightroom-integration pattern with no new dependencies.
+
+
+## 2026-10-03 — local review request and rendering correction
+
+- [x] Reject foreign-origin/host API requests and require JSON writes; render filename labels literally. Nine HTTP regressions and native browser red/green evidence saved.
+- [x] Replace six hard-coded core fixture paths with isolated temporary sources; preserve assertions.
+- [x] Document Big7 / Aries V2 profile and intake/export choices in RUNBOOK.md; historical packaging is not current release qualification.
+- Evidence: docs/verification/product-2026-10-03/TASK_RETURN.json;416 distinct passing behavioral cases across current/reused evidence (limitations retained),83 focused cases without denied I/O, six native Chrome journey checks, actual synthetic image + manifest.
+- [ ] PP-REVIEW-BURST: root completes existing similar-frame UI wiring and validates click/number-key swap through the existing API. Then finish keyboard/dialog/accessibility review and fresh packaging qualification where installed tooling permits; preserve model/private-photo/release gates.
+- Status CHECKPOINTED; main unchanged, no push/publication. Michael joint observations and manual gates in JOINT_ACCEPTANCE.json/TASK_RETURN.json.

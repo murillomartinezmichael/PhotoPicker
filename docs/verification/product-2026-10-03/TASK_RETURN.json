@@ -1,0 +1,68 @@
+{
+  "task": "PP-LOCAL-REMAINDER",
+  "owner": "Codex /root; Michael release/model/private-media gates retained",
+  "status": "CHECKPOINTED",
+  "release_status": "UNVERIFIED_IN_THIS_CAMPAIGN",
+  "source_base": "bc7b2313246872decf3454b59d6e0b7dbd07aa63",
+  "changes": [
+    "Local review requests now validate bound loopback Host and same-origin metadata before route dispatch; writes require application/json.",
+    "Filename and score labels use literal text nodes; native browser reproduced and closed HTML injection.",
+    "Six manifest fixtures use test-owned source paths; no hard-coded C:/photos or worktree photo reads.",
+    "Runbook explains Big7/AriesV2 intake profiles, stub-preview limits, approved real-model/export route and gallery asset mapping. Publishing doc no longer calls historical dist release-ready."
+  ],
+  "verification": "QUALIFICATION.json:416 distinct behavioral tests across source-bound evidence,83 affected core/HTTP cases completed without denied I/O, actual native Chrome journey6 checks; exact qualifications retained.",
+  "actual_outputs": [
+    "sample-export/synthetic-0.jpg",
+    "sample-export/manifest.json",
+    "browser-grid.png",
+    "browser-export.png"
+  ],
+  "not_finished": [
+    "Similar-frame API/CSS/HTML exist but focus view never populates controls or calls /swap; not finished.",
+    "Keyboard/dialog/mobile/accessibility release acceptance not complete.",
+    "Installed wheel dependency missing (build1.5.0/setuptools78.1.0 present); fresh candidate artifacts and declared target matrix unverified.",
+    "Real photos/model quality and Michael joint observations remain gated."
+  ],
+  "remaining": [
+    {
+      "id": "PP-LOCAL-REMAINDER",
+      "owner": "Codex /root",
+      "prerequisite": "Current source/evidence binding; installed runtimes and synthetic fixtures only",
+      "action": "PP-REVIEW-BURST: root completes existing similar-frame UI wiring and validates click/number-key swap through the existing API. Then finish keyboard/dialog/accessibility review and fresh packaging qualification where installed tooling permits; preserve model/private-photo/release gates.",
+      "acceptance": "Exact candidate, focused failures resolved, source-bound checks and practical joint acceptance; do not repeat unchanged export suites"
+    },
+    {
+      "id": "PP-TARGET-MATRIX",
+      "owner": "Existing release owner",
+      "prerequisite": "Approved existing CI/Linux environment or separately authorized provisioning route",
+      "action": "Qualify declared Python3.10/3.11/3.12 matrix and fresh exact-candidate wheel/sdist",
+      "acceptance": "Exact revision/build artifacts and passed target checks; old dist files do not qualify new source"
+    },
+    {
+      "id": "PP-CANDIDATE-RELEASE",
+      "owner": "Michael",
+      "prerequisite": "Reviewed maintained branch and current candidate tests/artifacts",
+      "action": "Resolve existing main/candidate publication decision and authorize any account/upload actions separately",
+      "acceptance": "Owner-approved version/artifact/revision and exact registry receipt; no main merge or publication inferred"
+    },
+    {
+      "id": "PP-REAL-PHOTOS-MODELS",
+      "owner": "Michael/client owner",
+      "prerequisite": "Exact approved private-media custody/selection and optional-model/download/provider scope",
+      "action": "Perform authorized real-camera/profile/model-quality acceptance where required",
+      "acceptance": "Owner observations reconciled with agent results; no synthetic fixture presented as real-shoot/model evidence"
+    }
+  ],
+  "next_action": "PP-REVIEW-BURST: root completes existing similar-frame UI wiring and validates click/number-key swap through the existing API. Then finish keyboard/dialog/accessibility review and fresh packaging qualification where installed tooling permits; preserve model/private-photo/release gates.",
+  "integration": "Candidate reviewed locally; commit receipt recorded separately after commit. Existing main preserved; no push/deploy.",
+  "files_touched": [
+    "photopicker/webui.py",
+    "tests/test_core.py",
+    "tests/test_webui.py",
+    "RUNBOOK.md",
+    "PUBLISHING.md",
+    "TODO.md",
+    "docs/verification/product-2026-10-03/"
+  ],
+  "boundary": "No private media, external requests, model calls, install, account, provider, spending, root index write, push or release. Existing untracked native cache left unread/unstaged."
+}

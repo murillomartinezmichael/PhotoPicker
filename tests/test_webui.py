@@ -553,6 +553,51 @@ def test_http_state_returns_session(running_server):
     assert payload["counts"]["total"] == 4
 
 
+@pytest.mark.parametrize("headers", [
+    {"Origin": "https://unrelated.invalid"},
+    {"Origin": "null"},
+    {"Host": "rebound.invalid"},
+    {"Sec-Fetch-Site": "cross-site"},
+    {"Content-Type": "text/plain"},
+])
+def test_http_rejects_foreign_write_before_mutation(running_server, headers):
+    base, store, _ = running_server
+    before = store.get().to_dict()
+    request = urllib.request.Request(
+        f"{base}/decision", data=b'{"idx":0,"decision":"keep"}', method="POST",
+        headers={"Content-Type": "application/json", **headers},
+    )
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=5)
+    assert caught.value.code in (403, 415)
+    assert store.get().to_dict() == before
+
+
+@pytest.mark.parametrize("headers", [
+    {"Host": "rebound.invalid"},
+    {"Origin": "https://unrelated.invalid"},
+    {"Sec-Fetch-Site": "cross-site"},
+])
+def test_http_rejects_foreign_session_read(running_server, headers):
+    base, _, _ = running_server
+    request = urllib.request.Request(f"{base}/state", headers=headers)
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=5)
+    assert caught.value.code == 403
+
+
+def test_http_same_origin_json_write_still_works(running_server):
+    base, store, _ = running_server
+    request = urllib.request.Request(
+        f"{base}/decision", data=b'{"idx":0,"decision":"keep"}', method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8", "Origin": base,
+                 "Sec-Fetch-Site": "same-origin"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert response.status == 200
+    assert store.get().candidates[0].decision == "keep"
+
+
 def test_http_root_returns_html(running_server):
     base, _, _ = running_server
     status, body, ctype = _http_get(f"{base}/")

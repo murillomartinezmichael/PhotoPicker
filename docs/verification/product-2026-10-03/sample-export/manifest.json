@@ -1,0 +1,29 @@
+{
+  "source_folder": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\product-qualification\\browser-final\\shoot",
+  "prompt": "",
+  "target": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\product-qualification\\browser-final\\export",
+  "exported_at": "2026-10-03T14:11:51.303354+00:00",
+  "reject_summary": {},
+  "input_count": 5,
+  "exported_count": 1,
+  "override": {
+    "picks": 3,
+    "kept": 3,
+    "overridden": 0,
+    "rate": 0.0,
+    "rescued": 0,
+    "line": "kept 3/3 picks \u2014 0% override"
+  },
+  "picks": [
+    {
+      "rank": 1,
+      "source_filename": "<img src=x onerror=window.fixtureExecuted=1>.jpg",
+      "output_filename": "synthetic-0.jpg",
+      "score": 0.9,
+      "capture_time": null,
+      "decision": "keep",
+      "ai_score": 8,
+      "ai_reason": "Synthetic explanation only; no model call"
+    }
+  ]
+}

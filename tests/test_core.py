@@ -104,13 +104,13 @@ def test_manifest_capture_time_serialized_when_present(monkeypatch, sharp_image:
     assert manifest["picks"][0]["capture_time"] == "2026-03-15T12:30:00"
 
 
-def test_manifest_output_paths_thread_through():
-    src = Path("/photos/IMG_0001.heic")
+def test_manifest_output_paths_thread_through(tmp_path: Path):
+    src = tmp_path / "IMG_0001.heic"
     dest = Path("/site/img/before/IMG_0001.jpg")
     pick = PhotoPick(
         profile="aries-gallery",
         selection=Selection(categorized={"before": [src]}),
-        source_folder=Path("/photos"),
+        source_folder=tmp_path,
     )
     manifest = pick.to_manifest(output_paths={src: dest})
     entry = manifest["picks"][0]
@@ -121,8 +121,8 @@ def test_manifest_output_paths_thread_through():
     assert entry["path"] == str(src)
 
 
-def test_manifest_webp_fields_thread_through():
-    src = Path("/photos/IMG_0001.heic")
+def test_manifest_webp_fields_thread_through(tmp_path: Path):
+    src = tmp_path / "IMG_0001.heic"
     jpg = Path("/site/img/before/before-01.jpg")
     webp = Path("/site/img/before/before-01.webp")
     webp_thumbs = {
@@ -132,7 +132,7 @@ def test_manifest_webp_fields_thread_through():
     pick = PhotoPick(
         profile="aries-gallery",
         selection=Selection(categorized={"before": [src]}),
-        source_folder=Path("/photos"),
+        source_folder=tmp_path,
     )
     manifest = pick.to_manifest(
         output_paths={src: jpg},
@@ -149,12 +149,12 @@ def test_manifest_webp_fields_thread_through():
     }
 
 
-def test_manifest_no_webp_fields_when_none_provided():
-    src = Path("a.jpg")
+def test_manifest_no_webp_fields_when_none_provided(tmp_path: Path):
+    src = tmp_path / "a.jpg"
     pick = PhotoPick(
         profile="default",
         selection=Selection(categorized={"featured": [src]}),
-        source_folder=Path("/x"),
+        source_folder=tmp_path,
     )
     entry = pick.to_manifest()["picks"][0]
     assert "output_webp" not in entry
@@ -162,8 +162,8 @@ def test_manifest_no_webp_fields_when_none_provided():
     assert "thumbnails_webp" not in entry
 
 
-def test_manifest_thumbnails_map_survives_serialization():
-    src = Path("/photos/IMG_0001.heic")
+def test_manifest_thumbnails_map_survives_serialization(tmp_path: Path):
+    src = tmp_path / "IMG_0001.heic"
     dest = Path("/site/img/before/before-01.jpg")
     thumbs = {
         src: {
@@ -175,7 +175,7 @@ def test_manifest_thumbnails_map_survives_serialization():
     pick = PhotoPick(
         profile="aries-gallery",
         selection=Selection(categorized={"before": [src]}),
-        source_folder=Path("/photos"),
+        source_folder=tmp_path,
     )
     manifest = pick.to_manifest(output_paths={src: dest}, thumbnails=thumbs)
     entry = manifest["picks"][0]
@@ -186,22 +186,22 @@ def test_manifest_thumbnails_map_survives_serialization():
     }
 
 
-def test_manifest_no_thumbnails_field_when_none_provided():
-    src = Path("a.jpg")
+def test_manifest_no_thumbnails_field_when_none_provided(tmp_path: Path):
+    src = tmp_path / "a.jpg"
     pick = PhotoPick(
         profile="default",
         selection=Selection(categorized={"featured": [src]}),
-        source_folder=Path("/x"),
+        source_folder=tmp_path,
     )
     entry = pick.to_manifest()["picks"][0]
     assert "thumbnails" not in entry
 
 
-def test_manifest_no_output_paths_by_default():
+def test_manifest_no_output_paths_by_default(tmp_path: Path):
     pick = PhotoPick(
         profile="default",
-        selection=Selection(categorized={"featured": [Path("a.jpg")]}),
-        source_folder=Path("/x"),
+        selection=Selection(categorized={"featured": [tmp_path / "a.jpg"]}),
+        source_folder=tmp_path,
     )
     entry = pick.to_manifest()["picks"][0]
     assert "output_path" not in entry
