@@ -7,3 +7,5 @@ Before the fix:11new assertions failed and1passed. Afterward:80distinct focused 
 Usable output images and GALLERY_MANIFEST.json are saved in the fleet photopicker/metadata-qualification directory. Product patch and reproducible tests are in this repository. TASK_RETURN.json records exact source hashes and remaining owners/gates; JOINT_ACCEPTANCE.json keeps separate Michael/agent observations.
 
 CHECKPOINTED: remaining profile/culler/UI/packaging qualification continues locally. Main integration, exact release artifact, actual private-photo acceptance and optional models remain gated. No publication, install, provider call or real photo was used.
+
+Native runtime limitation: an untracked `%SystemDrive%/ProgramData/Microsoft/Windows/Caches` directory was observed after the commit. Only filenames/sizes were inspected; contents remain unread and unstaged. Python audit controls are not native/OS I/O confinement. Tracked project files are clean; the whole worktree contains this preserved cache.

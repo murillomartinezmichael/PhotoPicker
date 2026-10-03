@@ -27,7 +27,7 @@
     "manifest": "Actual PhotoPick.to_manifest() returns correct timestamp/dimensions and all4output references from supplied synthetic Selection",
     "runtime": "Python3.10.11; Pillow12.3.0; pillow-heif1.4.0; libheif1.23.0; installed decoder libde2651.1.1",
     "ruff": "Pinned0.15.20 selected-source check passed",
-    "boundary": "Process-local deny hooks block sockets/processes/registry and private/config/unapproved reads; writes only owned fixtures.3negativecontrols passed. Not an OS-wide sandbox."
+    "boundary": "Process-local Python deny hooks block sockets/processes/registry and private/config/unapproved Python reads/writes;3negativecontrols passed. Native Windows caches were found outside the proof path; this is not an OS sandbox or proof of all native I/O confinement."
   },
   "source_sha256": {
     "photopicker/convert.py": "e0dc658eae7ca371f1199e38fad15b3ccd26eca0c12496c97c059973ebb3d303",
@@ -74,5 +74,29 @@
     "Only saved exports gain EXIF; transient preview/vision image payload behavior is unchanged",
     "No new auto-orientation/cropping, model inference, download, browser session, install or private-media access",
     "80focusedtests do not establish whole-product or CI matrix acceptance"
-  ]
+  ],
+  "native_runtime_observation": {
+    "untracked_windows_cache_metadata": [
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\cversions.2.db",
+        "size": 16384
+      },
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\{40D46174-B45A-4147-9165-320E565513B9}.2.ver0x0000000000000001.db",
+        "size": 4504
+      },
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\{6AF0698E-D558-4F6E-9B3C-3716689AF493}.2.ver0x0000000000000001.db",
+        "size": 311256
+      },
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\{DDF571F2-BE98-426D-8288-1A9A39C3FDA2}.2.ver0x0000000000000001.db",
+        "size": 662488
+      }
+    ],
+    "contents_read": false,
+    "contents_staged": false,
+    "preserved": true,
+    "meaning": "Tracked source clean after commit; whole worktree includes this untracked cache. Cause not established; likely missing Windows known-folder environment metadata, an inference. Preserve SystemDrive/ProgramData metadata in future isolated process environments; do not repeat tests solely to remove cache evidence."
+  }
 }
