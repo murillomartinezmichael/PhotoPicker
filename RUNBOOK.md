@@ -251,3 +251,9 @@ PhotoPicker is a library + CLI consumed inside other projects. It has **no** run
 - Secret store / `.env` file
 
 Downstream sites that *consume* PhotoPicker output (Aries, Big7) have their own runbooks for hosting and deploy. PhotoPicker just ships them a wheel.
+
+## Fresh distribution qualification (2026-10-09)
+
+The Ubuntu Python3.10/3.11/3.12 CI matrix now builds and exercises wheel and source distributions in separate fresh core-only environments. It checks dependency consistency, both installed CLI help commands, installed import origin and public photo-selection/manifest behavior with a generated checkerboard. Optional model packages must be absent.
+
+In an approved installation environment, run `python -m build` then `python scripts/check-distributions.py`. The dist directory must contain exactly one wheel and one source archive; preserve older artifacts elsewhere if needed. The checker downloads core dependencies, cleans only its own temporary environments, stops on failure and prints tested artifact hashes. It does not use client photos, optional model downloads or publish packages. CI success must be checked against the exact commit; adding this check alone does not establish qualification.

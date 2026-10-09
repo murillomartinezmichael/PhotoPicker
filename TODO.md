@@ -346,3 +346,9 @@ Source of product truth: ..\AI_HUB.md.
 - 2026-10-08 PhotoPicker recovery WIP: PP01 server correction and PP03 result/snapshot handling implemented;95webui tests pass before export snapshot follow-up,11export+1newconcurrent snapshot check pass afterward. Failed Windows replacement run retained; bounded retry tested. Uncommitted; UI PP02/03/04 remains next. Evidence: campaign photopicker/recovery-qualification/SERVER_CHECKPOINT.json. Gates unchanged.
 
 - 2026-10-08 PhotoPicker PP01–04 source corrections completed locally;96 guarded webui tests and6 deferred embedded-handler cases pass; Ruff and diff check pass. Latest independent review remains pending after unsupported model route error. Uncommitted, not release-ready; package/matrix, actual-device/media/model, integration/publication gates preserved. Evidence `photopicker/recovery-qualification/CURRENT_RETURN.json`.
+
+## 2026-10-09 — fresh package consumer CI
+
+- Current main c8c06f3 has passed Ubuntu3.10/3.11/3.12 editable tests and package build; exact downloaded wheel/sdist match all23package source files.
+- Added fresh wheel/sdist consumer checks to the existing CI matrix: isolated environments, pip check, installed CLI help, real synthetic API/manifest and optional-model absence. Pending exact-commit CI; no local install performed.
+- Next: inspect new matrix results before closing PP-TARGET-MATRIX package substeps. Actual-device/media/model acceptance and registry/release gates remain.
