@@ -23,10 +23,18 @@ def get_capture_time(path: Path) -> datetime | None:
             exif = img.getexif()
             if not exif:
                 return None
+            # Camera timestamps normally live in the Exif sub-IFD, while some
+            # image writers put them in the top-level directory instead.
+            try:
+                camera_exif = exif.get_ifd(0x8769) if 0x8769 in exif else {}
+            except (KeyError, TypeError, ValueError, OSError):
+                camera_exif = {}
             for tag_name in _DATETIME_TAGS:
                 tid = _TAG_TO_ID.get(tag_name)
-                if tid and tid in exif:
-                    parsed = _parse_exif_datetime(exif[tid])
+                if not tid:
+                    continue
+                for raw in (camera_exif.get(tid), exif.get(tid)):
+                    parsed = _parse_exif_datetime(raw)
                     if parsed is not None:
                         return parsed
     except Exception:

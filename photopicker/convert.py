@@ -68,6 +68,7 @@ def generate_thumbnails(
     dest_dir.mkdir(parents=True, exist_ok=True)
     produced: dict[int, Path] = {}
     with Image.open(source) as img:
+        save_kwargs["exif"] = img.getexif()
         rgb = img.convert("RGB")
         original_w, original_h = rgb.size
         for width in sorted(set(widths)):
@@ -120,10 +121,12 @@ def resolve_output_name(
 
 
 def transcode_to_jpg(source: Path, dest: Path, quality: int = DEFAULT_JPG_QUALITY) -> Path:
-    """Read `source` (any Pillow-supported format) and write `dest` as JPEG."""
+    """Write a JPEG while retaining source EXIF, including capture time."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source) as img:
-        img.convert("RGB").save(dest, "JPEG", quality=quality, optimize=True)
+        img.convert("RGB").save(
+            dest, "JPEG", quality=quality, optimize=True, exif=img.getexif()
+        )
     return dest
 
 
@@ -136,7 +139,9 @@ def to_webp(source: Path, dest: Path, quality: int = DEFAULT_WEBP_QUALITY) -> Pa
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source) as img:
-        img.convert("RGB").save(dest, "WEBP", quality=quality, method=6)
+        img.convert("RGB").save(
+            dest, "WEBP", quality=quality, method=6, exif=img.getexif()
+        )
     return dest
 
 

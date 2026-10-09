@@ -1,0 +1,102 @@
+{
+  "task": "PP-METADATA",
+  "owner": "Codex /root local implementation/verification; Michael integration/publication and real-photo decisions",
+  "at": "2026-10-03T13:45:44.184938+00:00",
+  "source_base": "5d3762a128dd5b6fcfcbdaf45ea7ea228ecbc76f",
+  "status": "CHECKPOINTED",
+  "product_outcome": "Camera capture dates reach gallery manifests and survive persisted image exports, with unchanged original bytes.",
+  "changes": [
+    "Read standard Exif sub-IFD timestamps before top-level equivalents, retaining existing timestamp-type priority and valid fallback",
+    "Preserve source EXIF in full-size JPEG/WebP and persisted JPG/WebP thumbnail exports",
+    "Add real synthetic HEIF decoder fixture and capture/export regressions; no encoder needed to run tests"
+  ],
+  "verification": {
+    "before": "11 failures/1 pass on nested timestamps and dropped export metadata; actual HEIF decoding confirmed",
+    "after_distinct_tests": 80,
+    "failures": 0,
+    "skips": 0,
+    "selection": [
+      "tests/test_metadata_exports.py",
+      "tests/test_exif.py",
+      "tests/test_exif_preservation.py",
+      "tests/test_convert.py",
+      "tests/test_convert_hardening.py",
+      "tests/test_cli.py"
+    ],
+    "actual_outputs": "4 persisted images decoded; all4 exports and both synthetic sources report correct2026-10-03T09:15:00 capture time; source HEIF unchanged",
+    "manifest": "Actual PhotoPick.to_manifest() returns correct timestamp/dimensions and all4output references from supplied synthetic Selection",
+    "runtime": "Python3.10.11; Pillow12.3.0; pillow-heif1.4.0; libheif1.23.0; installed decoder libde2651.1.1",
+    "ruff": "Pinned0.15.20 selected-source check passed",
+    "boundary": "Process-local Python deny hooks block sockets/processes/registry and private/config/unapproved Python reads/writes;3negativecontrols passed. Native Windows caches were found outside the proof path; this is not an OS sandbox or proof of all native I/O confinement."
+  },
+  "source_sha256": {
+    "photopicker/convert.py": "e0dc658eae7ca371f1199e38fad15b3ccd26eca0c12496c97c059973ebb3d303",
+    "photopicker/exif.py": "58b72833284e67685234d0951ee27864334b571346b2922b2019a054aa38d076",
+    "tests/test_metadata_exports.py": "f4d4a546da799cb6dbcd5715580740515fa0b21dae584e26a12df6d90b1c24f4",
+    "tests/fixtures/synthetic-metadata.heic": "1b8d7b5451211e83a70d5710acd24f903c1289f184a10721798f3a4fb529a786"
+  },
+  "fixture_origin": "1001-byte real HEIF generated locally from a synthetic960x640RGBrectangle with fake camera name/date. No user/client photo, model or downloaded asset.",
+  "remaining": [
+    {
+      "id": "PP-LOCAL-REMAINDER",
+      "owner": "Codex /root",
+      "prerequisite": "Current source/evidence binding; installed runtimes and synthetic fixtures only",
+      "action": "Finish remaining core/profile/culler/review-UI/packaging checks toward existing approved product; reconcile current profile guidance for Big7/AriesV2",
+      "acceptance": "Exact candidate, focused failures resolved, source-bound checks and practical joint acceptance; do not repeat unchanged export suites"
+    },
+    {
+      "id": "PP-TARGET-MATRIX",
+      "owner": "Existing release owner",
+      "prerequisite": "Approved existing CI/Linux environment or separately authorized provisioning route",
+      "action": "Qualify declared Python3.10/3.11/3.12 matrix and fresh exact-candidate wheel/sdist",
+      "acceptance": "Exact revision/build artifacts and passed target checks; old dist files do not qualify new source"
+    },
+    {
+      "id": "PP-CANDIDATE-RELEASE",
+      "owner": "Michael",
+      "prerequisite": "Reviewed maintained branch and current candidate tests/artifacts",
+      "action": "Resolve existing main/candidate publication decision and authorize any account/upload actions separately",
+      "acceptance": "Owner-approved version/artifact/revision and exact registry receipt; no main merge or publication inferred"
+    },
+    {
+      "id": "PP-REAL-PHOTOS-MODELS",
+      "owner": "Michael/client owner",
+      "prerequisite": "Exact approved private-media custody/selection and optional-model/download/provider scope",
+      "action": "Perform authorized real-camera/profile/model-quality acceptance where required",
+      "acceptance": "Owner observations reconciled with agent results; no synthetic fixture presented as real-shoot/model evidence"
+    }
+  ],
+  "next_action": "Codex /root continues remaining safe local product qualification on this maintained branch. Michael retains publication/private-media/model gates.",
+  "main_preserved": "c628198bafda41d546c76309c4e47ea8f0148e97",
+  "pushed": false,
+  "deployed": false,
+  "scope_limits": [
+    "Only saved exports gain EXIF; transient preview/vision image payload behavior is unchanged",
+    "No new auto-orientation/cropping, model inference, download, browser session, install or private-media access",
+    "80focusedtests do not establish whole-product or CI matrix acceptance"
+  ],
+  "native_runtime_observation": {
+    "untracked_windows_cache_metadata": [
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\cversions.2.db",
+        "size": 16384
+      },
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\{40D46174-B45A-4147-9165-320E565513B9}.2.ver0x0000000000000001.db",
+        "size": 4504
+      },
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\{6AF0698E-D558-4F6E-9B3C-3716689AF493}.2.ver0x0000000000000001.db",
+        "size": 311256
+      },
+      {
+        "path": "%SystemDrive%\\ProgramData\\Microsoft\\Windows\\Caches\\{DDF571F2-BE98-426D-8288-1A9A39C3FDA2}.2.ver0x0000000000000001.db",
+        "size": 662488
+      }
+    ],
+    "contents_read": false,
+    "contents_staged": false,
+    "preserved": true,
+    "meaning": "Tracked source clean after commit; whole worktree includes this untracked cache. Cause not established; likely missing Windows known-folder environment metadata, an inference. Preserve SystemDrive/ProgramData metadata in future isolated process environments; do not repeat tests solely to remove cache evidence."
+  }
+}

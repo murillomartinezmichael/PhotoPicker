@@ -1,0 +1,27 @@
+{
+  "source_folder": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\burst-qualification\\browser-final\\shoot",
+  "prompt": "",
+  "target": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\burst-qualification\\browser-reopen-final\\export",
+  "exported_at": "2026-10-03T14:31:25.735631+00:00",
+  "reject_summary": {},
+  "input_count": 5,
+  "exported_count": 1,
+  "override": {
+    "picks": 3,
+    "kept": 3,
+    "overridden": 0,
+    "rate": 0.0,
+    "rescued": 0,
+    "line": "kept 3/3 picks \u2014 0% override"
+  },
+  "picks": [
+    {
+      "rank": 1,
+      "source_filename": "synthetic-3.jpg",
+      "output_filename": "synthetic-3.jpg",
+      "score": 0.6,
+      "capture_time": null,
+      "decision": "keep"
+    }
+  ]
+}

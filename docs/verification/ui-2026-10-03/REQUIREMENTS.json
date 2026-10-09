@@ -1,0 +1,95 @@
+{
+  "as_of_utc": "2026-10-03T15:09:57.891620+00:00",
+  "scope_sources": [
+    "AI_HUB.md PhotoPicker section",
+    "PhotoPicker BRD, current implemented CLI/review and TODO; no reactivation of held proposals"
+  ],
+  "requirements": [
+    {
+      "id": "PP-R01",
+      "scope": "Library API and client-site profiles; no replacement manager",
+      "status": "LOCAL_VERIFIED",
+      "evidence": "429 offline cases plus RUNBOOK Big7/AriesV2 intake guidance; semantic quality requires PP-JOINT-ACCEPTANCE."
+    },
+    {
+      "id": "PP-R02",
+      "scope": "Cull/pick CLI, quoted paths and failure reporting",
+      "status": "LOCAL_VERIFIED",
+      "evidence": "Current CLI unit/integration cases; seven actual cmd.exe launcher scenarios."
+    },
+    {
+      "id": "PP-R03",
+      "scope": "HEIC/JPEG/WebP/thumbnail metadata-preserving export and manifest",
+      "status": "LOCAL_VERIFIED",
+      "evidence": "metadata-2026-10-03 artifacts; current429 suite; original hashes retained."
+    },
+    {
+      "id": "PP-R04",
+      "scope": "Local review safety, decisions, burst selection/restart and export",
+      "status": "LOCAL_VERIFIED",
+      "evidence": "product/burst qualification plus actual Chrome13-check burst regression and saved synthetic exports."
+    },
+    {
+      "id": "PP-R05",
+      "scope": "Keyboard, dialogs, reduced motion and narrow viewport",
+      "status": "LOCAL_VERIFIED_WITH_HUMAN_LIMITS",
+      "evidence": "37 broad journey checks,12 broad scans,13 targeted checks,16 final layout checks; CONTRAST_REVIEW and joint plan."
+    },
+    {
+      "id": "PP-R06",
+      "scope": "Focused code quality and >80% Python coverage",
+      "status": "LOCAL_VERIFIED",
+      "evidence": "429 cases;89.11% (1915/2149); pinned Ruff0.15.20; actual inference excluded."
+    },
+    {
+      "id": "PP-R07",
+      "scope": "Distributable exact candidate and supported runtime matrix",
+      "status": "BLOCKED",
+      "gate": "PP-TARGET-MATRIX"
+    },
+    {
+      "id": "PP-R08",
+      "scope": "Operator/client acceptance, real selection quality and measured claims",
+      "status": "BLOCKED",
+      "gate": "PP-JOINT-ACCEPTANCE"
+    },
+    {
+      "id": "PP-R09",
+      "scope": "Integration/publication",
+      "status": "BLOCKED",
+      "gate": "PP-RELEASE-DECISION"
+    }
+  ],
+  "held": [
+    "SiteGuide exporter and CockpitCloud cull panel proposals",
+    "RAW expansion / cloud intake / R2 and other explicitly parked proposals",
+    "Cancelled/inactive n8n workflow"
+  ],
+  "not_applicable": "No new public accessibility page, multi-tenant account system, cloud API, subscriptions or microservice split for this localhost asset-intake utility.",
+  "gates": [
+    {
+      "id": "PP-TARGET-MATRIX",
+      "owner": "Michael/release owner with repository execution owner",
+      "prerequisite": "Approved environment/dependency route including declared wheel dependency; exact reviewed candidate",
+      "action": "Build fresh wheel and sdist, inspect metadata, install artifact into an approved isolated environment, smoke imports/CLI, run declared Python3.10/3.11/3.12 matrix.",
+      "acceptance": "Record source revision, artifact hashes, build/install results and each matrix result. Old dist is not evidence.",
+      "limitation": "Local build1.5.0 and setuptools78.1.0 exist; wheel absent. No installs/CI execution authorized in current slice."
+    },
+    {
+      "id": "PP-JOINT-ACCEPTANCE",
+      "owner": "Michael with Codex /root",
+      "prerequisite": "Reviewed candidate and synthetic fixture; separate approved custody/model route before real photos or inference",
+      "action": "Fill independent observations in JOINT_ACCEPTANCE.json; perform actual-device Narrator/high-contrast/DPI and approved shoot-quality/performance review.",
+      "acceptance": "Expected results observed against exact candidate; discrepancies reconciled or tracked. No invented measured override-rate.",
+      "limitation": "Agent has synthetic browser observations only; cannot supply Michael or client judgments or use restricted real media/models."
+    },
+    {
+      "id": "PP-RELEASE-DECISION",
+      "owner": "Michael/release owner",
+      "prerequisite": "Current package/matrix and joint evidence, exact candidate review",
+      "action": "Decide candidate/main integration. Separately authorize any remote push/account/upload.",
+      "acceptance": "Approved target revision, complete qualification receipts and explicit authority for any publication.",
+      "limitation": "Current task permits reviewed local candidate commits, not this branch/main decision, pushes or publication."
+    }
+  ]
+}

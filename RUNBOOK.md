@@ -78,6 +78,53 @@ from photopicker.classifier import StubClassifier
 pick = pick_photos(folder="./photos", profile_name="aries", classifier=StubClassifier())
 ```
 
+### 1.5 Big7 and Aries V2 asset intake
+
+Use PhotoPicker on a separately approved intake folder, before a site's build.
+Do not point output at the originals or an existing published gallery. Review the
+selected photos and client facts before the site's owner integrates any assets.
+
+| Site / placement | Profile | Expected selection |
+|---|---|---|
+| Big7 service galleries | `big7` | Up to six repair and six new-build images; construction/crew and finished-work rules affect ranking. |
+| Aries V2 project detail gallery | `aries-gallery` | Deduplication and quality gate, then up to eight photos per before/during/after phase, ordered by capture date within each phase. |
+| Aries V2 short project teaser | `aries` | One photo per available phase plus up to six others. |
+| Model-free first pass | `default` or `photopicker-cull` | Quality ranking only; does not establish construction category or project phase. |
+
+Preview a command without model inference or output writes:
+
+```bash
+photopicker --folder ./approved-big7-intake --profile big7 --dry-run --benchmark
+photopicker --folder ./approved-aries-v2-intake --profile aries-gallery --dry-run
+```
+
+`--dry-run` uses uniform stub labels. Its categories are a pipeline preview,
+not semantic classification evidence. Actual themed selection requires the
+optional CLIP extra and its model to be available through an approved route.
+First use can download model weights; these commands do not authorize that,
+access to private client photos, or any install.
+
+After those gates are satisfied, export to a **new** review directory:
+
+```bash
+photopicker --folder ./approved-big7-intake --profile big7 --output ./review-big7 --rename-scheme category-rank --thumbnails 400,800 --webp --manifest ./review-big7/manifest.json
+photopicker --folder ./approved-aries-v2-intake --profile aries-gallery --output ./review-aries-v2 --rename-scheme category-rank --thumbnails 400,800 --webp --manifest ./review-aries-v2/manifest.json
+```
+
+The manifest includes category, rank, capture date, dimensions and resolved export
+names. Files live under their category directory: join that directory with
+`output_filename`, `output_webp_filename` and the thumbnail names. Do not publish
+the raw manifest's local `path`/`source` fields. Validate the selected images and
+map only approved public asset references into the existing site's data format.
+This intake step neither edits Aries V1 nor deploys either site.
+
+For an entirely offline quality-first review, use
+`photopicker-cull ./approved-intake --top 30`; omit `--prompt` and `--faces`.
+The local UI is for the same computer: open its printed loopback URL directly.
+It rejects foreign origins/hostnames and non-JSON write requests; it is not a
+public or authenticated multi-user service. Review the current verification
+return before release; synthetic checks do not establish real-shoot accuracy.
+
 ---
 
 ## 2. Tests

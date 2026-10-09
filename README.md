@@ -2,9 +2,8 @@
 
 ![PhotoPicker — 500 photos in. 20 you would post.](assets/og-card.png)
 
-Every photo-culling product on the market is a GUI fighting for the same
-wedding photographer. PhotoPicker is the other thing: a **scriptable Python
-library + CLI** that turns a raw folder into a curated keeper set from code —
+PhotoPicker is a **scriptable Python library + CLI** that turns a raw
+folder into a curated keeper set from code —
 agency site builds, real-estate feeds, batch e-commerce, CI jobs, overnight
 automation. Deterministic offline pipeline, pip-installable, no GUI required
 (there is a local review UI when you want eyes on it).
@@ -28,15 +27,15 @@ photopicker-cull ./shoot --top 30 --output ./site/img --no-serve --manifest cull
 photopicker-cull ./shoot --top 30 --output ./rated --no-serve --xmp
 ```
 
-## Perf (measured, `scripts/perf_1k.py`)
+## Historical offline performance (`scripts/perf_1k.py`, 2026-07-05)
 
 | Input | Result | Time |
 |---|---|---|
 | 500 photos | 30 keepers | **~9.5 s** |
 | 1000 photos | 30 keepers | **~18 s** |
-| Vision rerank | per photo | ~1.5 s (parallelized 4-wide) |
 
-Offline numbers from a typical dev laptop (Windows, py3.10). Reproduce with
+Historical offline numbers from a dev laptop (Windows, py3.10), not a current
+candidate benchmark or provider latency/billing measurement. Reproduce with
 `python scripts/perf_1k.py --n 1000 --top 30`.
 
 ## Stack
@@ -45,7 +44,15 @@ Python 3.10+ · Pillow + pillow-heif (HEIC) · OpenCV (sharpness) · Click (CLI)
 
 ## Status
 
-**v0.14.** Cull + web UI + Vision rerank + sharpest-per-cluster + filter chips + resume + manifest export + XMP ratings + override-rate metric + opt-in face/closed-eye down-rank. **398 tests green** · ruff-clean · CI on py3.10/3.11/3.12.
+**v0.14.0 package metadata; unreleased candidate changes.** Existing cull, local
+review, burst selection/restart, export, profiles and optional model paths remain.
+On 2026-10-03, the local Windows/Python3.10.11 candidate passed 429 offline tests
+with 89.11% Python coverage and pinned Ruff. Actual face inference was excluded
+before collection; model/provider quality is unverified. Keyboard/dialog,
+narrow-screen, burst/export and Windows launcher evidence is saved in
+[the candidate return](docs/verification/ui-2026-10-03/TASK_RETURN.md).
+Fresh wheel/sdist, declared Python3.10/3.11/3.12 CI, joint acceptance and release
+approval remain open. See [STATUS.md](STATUS.md) and [PENDING_MANUAL.md](PENDING_MANUAL.md).
 
 ## Quick start — cull a shoot
 
@@ -57,6 +64,15 @@ photopicker-cull demo/shoot --top 10      # Opens the web UI at http://127.0.0.1
 ```
 
 ![Cull grid on the synthetic demo shoot: 40 frames culled to the top 10, with LED keep/reject/undecided counters, filter chips, per-frame quality scores, and "+3 similar" burst-cluster badges](docs/img/cull-grid.jpg)
+
+Open a card with a similar-frame badge to compare the current pick with its
+alternatives. Click an alternative or press its displayed number (`2`–`9`);
+`1` identifies the current pick. Every alternative remains reachable as a normal
+button, including groups larger than nine frames. Swapping again can restore the
+previous pick; `U` undoes keep/reject decisions, not frame selection. A changed
+frame clears the previous frame's AI explanation and gets a fresh preview URL.
+The chosen frame and keep/reject decision resume after restart when the same
+photo group is rediscovered. Changed groups use the fresh cull result.
 
 ![Focus view of one keeper from the demo shoot: the full-size frame above the "why" panel — quality 70, top 10% of this shoot](docs/img/cull-focus.jpg)
 
@@ -170,6 +186,27 @@ photopicker --folder ./photos --profile big7 --output ./curated
 photopicker --folder ./photos --profile default --json-out
 ```
 
+
+### Client-site starting points
+
+For **Big7 Construction**, start with `big7`; it creates repair/build buckets,
+with up to six picks per bucket. The profile uses CLIP labels, so use the
+approved environment that has the optional `[clip]` extra installed:
+
+```bash
+photopicker --folder ./shoot --profile big7 --output ./curated --manifest ./curated.json
+```
+
+For **Aries Outdoor Living V2**, the existing intake already calls
+`pick_photos(folder=src_folder, profile_name="aries-gallery")` in
+[`AriesOutdoorLiving-V2/scripts/import_photos.py`](../AriesOutdoorLiving-V2/scripts/import_photos.py).
+That profile deduplicates and filters the raw folder, assigns before/during/after
+phases, and sorts each phase chronologically for the project gallery. Use the
+existing importer and its approved dependency/photo route; this documentation
+does not perform an import or approve real-image choices. `aries` is the smaller
+hero-set profile (one frame per phase plus up to six others), not the V2 batch
+gallery profile.
+
 | Flag | Purpose |
 |---|---|
 | `--folder, -f` | Input folder (required) |
@@ -222,7 +259,7 @@ See `photopicker/profiles/aries.py` as the reference.
 ```bash
 pip install -e ".[dev]"
 ruff check .
-pytest                        # 398 tests, ~40s (7 face-detection tests skip without [faces])
+pytest                        # Includes real face-model checks when [faces] is installed
 pytest --cov=photopicker
 ```
 

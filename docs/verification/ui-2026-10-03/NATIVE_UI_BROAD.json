@@ -1,0 +1,262 @@
+{
+  "source_sha256": "fe0b004ce137755b9a96bce27cc80f2be2787a4bd3c5ffdb26bd7d6d2115f074",
+  "checks": [
+    {
+      "name": "grid fits 1280",
+      "pass": true
+    },
+    {
+      "name": "cards keyboard reachable 1280",
+      "pass": true
+    },
+    {
+      "name": "reduced motion 1280",
+      "pass": true
+    },
+    {
+      "name": "export fits 1280",
+      "pass": true
+    },
+    {
+      "name": "export input labelled 1280",
+      "pass": true
+    },
+    {
+      "name": "export Tab wraps 1280",
+      "pass": true
+    },
+    {
+      "name": "Escape from input closes export 1280",
+      "pass": true
+    },
+    {
+      "name": "export restores focus 1280",
+      "pass": true
+    },
+    {
+      "name": "focus dialog labelled 1280",
+      "pass": true
+    },
+    {
+      "name": "focus modal has keyboard focus 1280",
+      "pass": true
+    },
+    {
+      "name": "focus returns to grid 1280",
+      "pass": true
+    },
+    {
+      "name": "help Tab contained 1280",
+      "pass": true
+    },
+    {
+      "name": "grid fits 390",
+      "pass": true
+    },
+    {
+      "name": "cards keyboard reachable 390",
+      "pass": true
+    },
+    {
+      "name": "reduced motion 390",
+      "pass": true
+    },
+    {
+      "name": "export fits 390",
+      "pass": true
+    },
+    {
+      "name": "export input labelled 390",
+      "pass": true
+    },
+    {
+      "name": "export Tab wraps 390",
+      "pass": true
+    },
+    {
+      "name": "Escape from input closes export 390",
+      "pass": true
+    },
+    {
+      "name": "export restores focus 390",
+      "pass": true
+    },
+    {
+      "name": "focus dialog labelled 390",
+      "pass": true
+    },
+    {
+      "name": "focus modal has keyboard focus 390",
+      "pass": true
+    },
+    {
+      "name": "focus returns to grid 390",
+      "pass": true
+    },
+    {
+      "name": "help Tab contained 390",
+      "pass": true
+    },
+    {
+      "name": "grid fits 320",
+      "pass": true
+    },
+    {
+      "name": "cards keyboard reachable 320",
+      "pass": true
+    },
+    {
+      "name": "reduced motion 320",
+      "pass": true
+    },
+    {
+      "name": "export fits 320",
+      "pass": true
+    },
+    {
+      "name": "export input labelled 320",
+      "pass": true
+    },
+    {
+      "name": "export Tab wraps 320",
+      "pass": true
+    },
+    {
+      "name": "Escape from input closes export 320",
+      "pass": true
+    },
+    {
+      "name": "export restores focus 320",
+      "pass": true
+    },
+    {
+      "name": "focus dialog labelled 320",
+      "pass": true
+    },
+    {
+      "name": "focus modal has keyboard focus 320",
+      "pass": true
+    },
+    {
+      "name": "focus returns to grid 320",
+      "pass": true
+    },
+    {
+      "name": "help Tab contained 320",
+      "pass": true
+    },
+    {
+      "name": "no browser errors or external page requests",
+      "pass": true
+    }
+  ],
+  "axe": [
+    {
+      "surface": "grid",
+      "width": 1280,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "export",
+      "width": 1280,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "surface": "focus",
+      "width": 1280,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "help",
+      "width": 1280,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "surface": "grid",
+      "width": 390,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "export",
+      "width": 390,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "surface": "focus",
+      "width": 390,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "help",
+      "width": 390,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "grid",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "export",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": []
+    },
+    {
+      "surface": "focus",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "aria-prohibited-attr",
+        "color-contrast"
+      ]
+    },
+    {
+      "surface": "help",
+      "width": 320,
+      "version": "4.13.0",
+      "violations": [],
+      "incomplete": [
+        "color-contrast"
+      ]
+    }
+  ],
+  "errors": [],
+  "external_requests": [],
+  "chrome": "154.0.8037.95",
+  "status": "PASS"
+}

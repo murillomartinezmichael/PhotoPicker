@@ -23,9 +23,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 import threading
 import time
 import webbrowser
+from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -161,6 +165,26 @@ class Session:
         return {"total": len(self.candidates), "keep": keeps, "reject": rejects, "undecided": undecided}
 
 
+def _promote_similar(candidate: Candidate, member: int) -> None:
+    """Exchange two already-discovered frames, retaining fresh metadata."""
+    from .exif import get_capture_time
+
+    entry = candidate.similar[member]
+    old = {"path": candidate.path, "filename": candidate.filename, "score": candidate.score}
+    candidate.path = str(entry["path"])
+    candidate.filename = str(entry["filename"])
+    candidate.score = float(entry.get("score", 0.0))
+    candidate.similar[member] = old
+    candidate.ai_score = None
+    candidate.ai_reason = ""
+    capture = get_capture_time(Path(candidate.path))
+    candidate.capture_time = capture.isoformat() if capture else None
+
+
+class CheckpointError(OSError):
+    """A session checkpoint could not be committed."""
+
+
 class SessionStore:
     """Thread-safe wrapper around a Session on disk."""
 
@@ -171,47 +195,80 @@ class SessionStore:
         self._save()
 
     def _save(self) -> None:
+        # Same-directory replacement keeps the last complete checkpoint intact.
+        temporary = None
         try:
-            self.session_path.write_text(json.dumps(self.session.to_dict(), indent=2))
-        except OSError as exc:  # non-fatal — UI keeps working, restart won't recover
-            log.warning("Could not persist session to %s: %s", self.session_path, exc)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.session_path.parent,
+                prefix=self.session_path.name + ".", suffix=".tmp", delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                json.dump(self.session.to_dict(), stream, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # Windows can briefly deny replacement while another process has
+            # the file open. Retry only that error, without touching the old file.
+            for attempt in range(3):
+                try:
+                    os.replace(temporary, self.session_path)
+                    break
+                except PermissionError:
+                    if attempt == 2:
+                        raise
+                    time.sleep(0.05)
+            temporary = None
+        except OSError as exc:
+            raise CheckpointError(str(exc)) from exc
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    log.warning("Could not remove incomplete checkpoint temporary file")
+
+    @contextmanager
+    def _mutation(self):
+        with self._lock:
+            previous = deepcopy(self.session)
+            try:
+                yield
+                self._save()
+            except Exception:
+                self.session = previous
+                raise
 
     def get(self) -> Session:
         with self._lock:
-            return self.session
+            return deepcopy(self.session)
 
     def decide(self, idx: int, decision: Decision) -> None:
-        with self._lock:
+        with self._mutation():
             if not (0 <= idx < len(self.session.candidates)):
                 raise IndexError(idx)
             if decision not in ("keep", "reject", ""):
                 raise ValueError(decision)
             self.session.candidates[idx].decision = decision
             self.session.history.append(idx)
-            self._save()
 
     def undo(self) -> int | None:
-        with self._lock:
+        with self._mutation():
             if not self.session.history:
                 return None
             idx = self.session.history.pop()
             self.session.candidates[idx].decision = ""
-            self._save()
             return idx
 
     def reset(self) -> None:
-        with self._lock:
+        with self._mutation():
             for c in self.session.candidates:
                 c.decision = ""
             self.session.history.clear()
-            self._save()
 
     def hydrate(self, new_session: Session) -> None:
         """Swap the underlying session — used when the cull thread finishes
         and the initially-empty store gets the real candidate set."""
-        with self._lock:
+        with self._mutation():
             self.session = new_session
-            self._save()
 
     def swap(self, idx: int, member: int) -> None:
         """Promote one of a candidate's near-duplicate frames to be the pick.
@@ -222,25 +279,13 @@ class SessionStore:
         frame. Deliberately not part of the undo history: it changes *which*
         file the slot points at, not the keep/reject decision on the slot.
         """
-        from .exif import get_capture_time
-
-        with self._lock:
+        with self._mutation():
             if not (0 <= idx < len(self.session.candidates)):
                 raise IndexError(idx)
             c = self.session.candidates[idx]
             if not (0 <= member < len(c.similar)):
                 raise IndexError(member)
-            entry = c.similar[member]
-            old = {"path": c.path, "filename": c.filename, "score": c.score}
-            c.path = str(entry["path"])
-            c.filename = str(entry["filename"])
-            c.score = float(entry.get("score", 0.0))
-            c.similar[member] = old
-            c.ai_score = None
-            c.ai_reason = ""
-            capture = get_capture_time(Path(c.path))
-            c.capture_time = capture.isoformat() if capture else None
-            self._save()
+            _promote_similar(c, member)
 
     def keepers(self) -> list[Path]:
         with self._lock:
@@ -333,19 +378,43 @@ def _build_export_manifest(
 
 
 def _load_session_from_disk(session_path: Path, candidates: list[Candidate]) -> list[Candidate]:
-    """Restore prior decisions from `.photopicker-session.json` if the candidate
-    set matches by path. Returns the (possibly-updated) candidates list."""
+    """Restore a selection only within an identical, freshly discovered group.
+
+    Saved paths identify members; they never supply new files or stale scores.
+    Ambiguous/malformed records and changed clusters retain the new cull result.
+    """
     if not session_path.exists():
         return candidates
     try:
         prior = json.loads(session_path.read_text())
     except (OSError, json.JSONDecodeError):
         return candidates
-    by_path = {c["path"]: c for c in prior.get("candidates", [])}
+    if not isinstance(prior, dict) or not isinstance(prior.get("candidates"), list):
+        return candidates
+    by_group: dict[frozenset[str], list[dict]] = {}
+    for saved in prior["candidates"]:
+        if not isinstance(saved, dict) or not isinstance(saved.get("path"), str):
+            continue
+        similar = saved.get("similar", [])
+        if not isinstance(similar, list) or any(
+            not isinstance(item, dict) or not isinstance(item.get("path"), str)
+            for item in similar
+        ):
+            continue
+        group = frozenset([saved["path"], *(item["path"] for item in similar)])
+        by_group.setdefault(group, []).append(saved)
     for cand in candidates:
-        prior_c = by_path.get(cand.path)
-        if prior_c is not None:
-            cand.decision = prior_c.get("decision", "") or ""
+        group = frozenset([cand.path, *(item["path"] for item in cand.similar)])
+        matches = by_group.get(group, [])
+        if len(matches) != 1:
+            continue
+        saved = matches[0]
+        if saved["path"] != cand.path:
+            member = next(i for i, item in enumerate(cand.similar) if item["path"] == saved["path"])
+            _promote_similar(cand, member)
+        decision = saved.get("decision", "")
+        if decision in ("keep", "reject", ""):
+            cand.decision = decision
     return candidates
 
 
@@ -471,6 +540,8 @@ def make_handler(
 
         # ---- routing ----
         def do_GET(self) -> None:  # noqa: N802
+            if not self._local_request():
+                return
             try:
                 if self.path == "/" or self.path.startswith("/?"):
                     self._send_html()
@@ -486,11 +557,20 @@ def make_handler(
                     self._send_json({"status": "ok"})
                 else:
                     self._send_text(HTTPStatus.NOT_FOUND, "not found")
+            except ConnectionError:
+                # Fast navigation cancels thumbnail downloads; the client is gone.
+                return
             except Exception:
                 log.exception("GET %s failed", self.path)
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
 
         def do_POST(self) -> None:  # noqa: N802
+            if not self._local_request():
+                return
+            # Browser forms/no-cors requests cannot send application/json.
+            if self.headers.get_content_type() != "application/json":
+                self._send_text(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "application/json required")
+                return
             try:
                 if self.path == "/decision":
                     self._handle_decision()
@@ -509,11 +589,33 @@ def make_handler(
                     shutdown_event.set()
                 else:
                     self._send_text(HTTPStatus.NOT_FOUND, "not found")
+            except ConnectionError:
+                return
+            except CheckpointError:
+                log.exception("Session checkpoint failed")
+                self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                "Session could not be saved. Change was not applied; check disk access and retry.")
             except Exception:
                 log.exception("POST %s failed", self.path)
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
 
         # ---- helpers ----
+        def _local_request(self) -> bool:
+            """Loopback binding alone does not stop browser-originated requests."""
+            port = self.server.server_address[1]
+            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if port == 80:
+                hosts.update({"127.0.0.1", "localhost"})
+            authorities = self.headers.get_all("Host", [])
+            origins = self.headers.get_all("Origin", [])
+            if (len(authorities) != 1 or authorities[0] not in hosts
+                    or len(origins) > 1
+                    or (origins and origins[0] != f"http://{authorities[0]}")
+                    or self.headers.get("Sec-Fetch-Site", "none") not in {"same-origin", "none"}):
+                self._send_text(HTTPStatus.FORBIDDEN, "local same-origin requests only")
+                return False
+            return True
+
         def _read_json(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0") or 0)
             if not length:
@@ -570,7 +672,7 @@ def make_handler(
                     self.wfile.flush()
                     if snap["finished"]:
                         break
-            except (BrokenPipeError, ConnectionResetError):
+            except ConnectionError:
                 # Browser closed the tab; that's the happy path.
                 return
 
@@ -677,37 +779,46 @@ def make_handler(
             except OSError as exc:
                 self._send_text(HTTPStatus.BAD_REQUEST, f"cannot create target: {exc}")
                 return
-            paths = (
-                store.undecided_keepers() if include_undecided else store.keepers()
-            )
+            session = store.get()
+            decisions = ("keep", "") if include_undecided else ("keep",)
+            paths = [Path(c.path) for c in session.candidates if c.decision in decisions]
             if not paths:
-                self._send_json({"exported": 0, "target": str(target_dir), "note": "nothing to export"})
+                self._send_json({"exported": 0, "requested": 0, "files": [], "failures": [],
+                                 "complete": True, "target": str(target_dir), "note": "nothing to export"})
                 return
             src_to_dest: dict[Path, Path] = {}
             rated = 0
+            failures = []
             for rank, src in enumerate(paths, start=1):
                 try:
                     dest = copy_or_transcode(src, target_dir, convert_heic=convert_heic)
                     src_to_dest[src] = dest
-                    if embed_xmp and embed_xmp_rating(
-                        dest, rating_for_rank(rank, len(paths))
-                    ):
-                        rated += 1
-                except Exception:
+                except Exception as exc:
                     log.exception("export failed for %s", src)
+                    failures.append({"file": src.name, "stage": "copy", "error": str(exc)})
+                    continue
+                if embed_xmp:
+                    try:
+                        if not embed_xmp_rating(dest, rating_for_rank(rank, len(paths))):
+                            raise ValueError("XMP rating was not written")
+                        rated += 1
+                    except Exception as exc:
+                        failures.append({"file": src.name, "stage": "xmp", "error": str(exc)})
             written = [p.name for p in src_to_dest.values()]
             payload: dict[str, Any] = {
                 "exported": len(written),
                 "target": str(target_dir),
                 "files": written,
+                "requested": len(paths),
+                "failures": failures,
             }
             if embed_xmp:
                 payload["xmp_embedded"] = rated
-            override = _override_stats(store.get())
+            override = _override_stats(session)
             if override is not None:
                 payload["override"] = override
             if write_manifest and src_to_dest:
-                manifest = _build_export_manifest(store.get(), src_to_dest, target_dir)
+                manifest = _build_export_manifest(session, src_to_dest, target_dir)
                 manifest_path = target_dir / "manifest.json"
                 try:
                     manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -715,6 +826,7 @@ def make_handler(
                 except OSError as exc:
                     log.warning("manifest write failed: %s", exc)
                     payload["manifest_error"] = str(exc)
+            payload["complete"] = not failures and "manifest_error" not in payload
             self._send_json(payload)
 
     return Handler
@@ -813,7 +925,7 @@ INDEX_HTML = r"""<!doctype html>
     --panel: #0e1218;
     --line: #1c2530;
     --ink: #d8e2ee;
-    --muted: #6b7a90;
+    --muted: #9aaac0;
     --cyan: #4de5ff;
     --magenta: #ff4dd8;
     --keep: #29d17a;
@@ -823,6 +935,8 @@ INDEX_HTML = r"""<!doctype html>
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
+    display: flex;
+    flex-direction: column;
     background: var(--bg);
     color: var(--ink);
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
@@ -860,6 +974,7 @@ INDEX_HTML = r"""<!doctype html>
   header {
     position: relative; z-index: 2;
     display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px; flex-shrink: 0;
     padding: 10px 16px;
     background: linear-gradient(180deg, var(--panel), transparent);
     border-bottom: 1px solid var(--line);
@@ -867,6 +982,7 @@ INDEX_HTML = r"""<!doctype html>
   header .brand {
     display: flex; align-items: center; gap: 12px;
     font-weight: 600; letter-spacing: 0.06em;
+    flex: 1 1 280px; min-width: 0; flex-wrap: wrap;
   }
   header .brand .dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -879,8 +995,9 @@ INDEX_HTML = r"""<!doctype html>
     50% { opacity: 0.4; }
   }
   header .brand h1 { font-size: 13px; margin: 0; text-transform: uppercase; }
-  header .brand small { color: var(--muted); }
-  .leds { display: flex; align-items: center; gap: 10px; }
+  header .brand small { color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header .actions { display: flex; gap: 6px; }
+  .leds { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .led {
     display: flex; align-items: center; gap: 6px;
     padding: 4px 10px;
@@ -917,7 +1034,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   main {
     position: relative; z-index: 1;
-    height: calc(100vh - 46px - 30px - 40px);
+    flex: 1; min-height: 0;
     overflow-y: auto;
   }
   .grid {
@@ -927,6 +1044,7 @@ INDEX_HTML = r"""<!doctype html>
     padding: 16px;
   }
   .card {
+    padding: 0; color: var(--ink); font: inherit; text-align: left;
     position: relative;
     background: var(--panel);
     border: 1px solid var(--line);
@@ -945,15 +1063,17 @@ INDEX_HTML = r"""<!doctype html>
   .card .meta {
     position: absolute; bottom: 0; left: 0; right: 0;
     padding: 4px 6px;
-    background: linear-gradient(0deg, rgba(0,0,0,0.75), transparent);
-    display: flex; justify-content: space-between;
+    background: rgba(0,0,0,0.88);
+    display: flex; justify-content: space-between; gap: 8px;
     font-size: 10px;
     color: var(--muted);
     letter-spacing: 0.05em;
   }
+  .card .meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .meta > span:last-child { flex-shrink: 0; white-space: nowrap; }
   .card .idx {
     position: absolute; top: 4px; left: 4px;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.88);
     padding: 2px 6px;
     font-size: 10px; color: var(--muted);
     border: 1px solid var(--line);
@@ -985,12 +1105,13 @@ INDEX_HTML = r"""<!doctype html>
     letter-spacing: 0.1em;
   }
   footer {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    height: 30px;
+    position: relative; flex-shrink: 0;
+    min-height: 30px;
     background: var(--panel);
     border-top: 1px solid var(--line);
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 16px;
+    flex-wrap: wrap; gap: 6px;
+    padding: 8px 16px;
     z-index: 2;
     font-size: 11px; color: var(--muted);
   }
@@ -1008,7 +1129,7 @@ INDEX_HTML = r"""<!doctype html>
     display: none;
     align-items: center; justify-content: center;
     z-index: 50;
-    padding: 40px;
+    padding: 50px 16px 16px; overflow-y: auto;
     flex-direction: column;
   }
   #focus-view.on { display: flex; }
@@ -1023,6 +1144,7 @@ INDEX_HTML = r"""<!doctype html>
     display: flex; gap: 18px; align-items: center;
     font-size: 12px; color: var(--muted);
     letter-spacing: 0.05em;
+    max-width: 100%; overflow-wrap: anywhere;
   }
   #focus-view .focus-meta strong { color: var(--ink); }
   #focus-view .focus-meta .prompt-line { color: var(--muted); }
@@ -1056,7 +1178,12 @@ INDEX_HTML = r"""<!doctype html>
     background: var(--panel);
     cursor: pointer;
     transition: box-shadow 100ms ease;
+    padding: 0;
+    color: var(--ink);
+    font: inherit;
   }
+  #focus-similar .sim-card:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  #focus-similar .sim-card:disabled { opacity: 0.6; cursor: wait; }
   #focus-similar .sim-card img { width: 100%; display: block; }
   #focus-similar .sim-card:hover { box-shadow: 0 0 8px rgba(77,229,255,0.4); }
   #focus-similar .sim-card.current {
@@ -1066,7 +1193,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   #focus-similar .sim-card .key {
     position: absolute; top: 2px; left: 4px;
-    background: rgba(0,0,0,0.65); color: var(--cyan);
+    background: rgba(0,0,0,0.88); color: var(--cyan);
     padding: 0 5px; font-size: 10px;
     letter-spacing: 0.06em;
   }
@@ -1079,7 +1206,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   .card .sim-badge {
     position: absolute; bottom: 26px; left: 4px;
-    background: rgba(0,0,0,0.6); color: var(--cyan);
+    background: rgba(0,0,0,0.88); color: var(--cyan);
     border: 1px solid var(--line);
     padding: 1px 6px; font-size: 9px;
     letter-spacing: 0.08em; text-transform: uppercase;
@@ -1090,6 +1217,7 @@ INDEX_HTML = r"""<!doctype html>
     display: none;
     align-items: center; justify-content: center;
     z-index: 60;
+    padding: 16px;
   }
   #export-dialog.on, #help-dialog.on { display: flex; }
   #export-dialog .box, #help-dialog .box {
@@ -1097,8 +1225,9 @@ INDEX_HTML = r"""<!doctype html>
     border: 1px solid var(--cyan);
     box-shadow: 0 0 24px rgba(77,229,255,0.2);
     padding: 22px 24px;
-    min-width: 420px;
-    max-width: 640px;
+    min-width: 0;
+    width: min(100%, 640px);
+    max-height: 100%; overflow-y: auto;
   }
   #export-dialog h2, #help-dialog h2 {
     margin: 0 0 12px 0;
@@ -1146,6 +1275,7 @@ INDEX_HTML = r"""<!doctype html>
   #help-dialog dd { margin: 0 0 4px 0; color: var(--muted); }
   .filters {
     display: flex; gap: 6px;
+    flex-wrap: wrap; flex-shrink: 0;
     padding: 8px 16px 0 16px;
     position: relative; z-index: 2;
   }
@@ -1168,7 +1298,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   .filters .chip .count {
     display: inline-block; margin-left: 6px;
-    color: var(--muted); opacity: 0.7;
+    color: var(--muted);
   }
   .filters .chip.on .count { color: var(--cyan); opacity: 1; }
   .filters .spacer { flex: 1; }
@@ -1192,7 +1322,7 @@ INDEX_HTML = r"""<!doctype html>
   }
   .card .cap-time {
     position: absolute; top: 4px; right: 4px;
-    background: rgba(0,0,0,0.55); color: var(--muted);
+    background: rgba(0,0,0,0.88); color: var(--muted);
     padding: 2px 6px; font-size: 9px;
     letter-spacing: 0.05em;
     border: 1px solid var(--line);
@@ -1272,9 +1402,25 @@ INDEX_HTML = r"""<!doctype html>
     text-transform: uppercase;
     opacity: 0.7;
   }
+  :is(button, input, select, a, [tabindex]):focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  .skip-link { position: fixed; top: -100px; left: 12px; z-index: 400; background: var(--panel); color: var(--ink); padding: 10px; }
+  .skip-link:focus { top: 12px; }
+  #focus-close { position: absolute; top: 12px; right: 16px; background: var(--panel); color: var(--ink); border: 1px solid var(--cyan); padding: 6px 10px; cursor: pointer; }
+  #toast { max-width: calc(100vw - 32px); overflow-wrap: anywhere; }
+  #progress-screen .bar { max-width: 100%; }
+  @media (max-width: 640px) {
+    #focus-view { justify-content: flex-start; }
+    #focus-view .focus-stats { max-width: 100%; }
+    #focus-similar .sim-card { width: 120px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
 </style>
 </head>
 <body>
+<a href="#main" class="skip-link">Skip to photos</a>
 <header>
   <div class="brand">
     <span class="dot"></span>
@@ -1285,7 +1431,7 @@ INDEX_HTML = r"""<!doctype html>
   <div class="actions">
     <button id="btn-undo" title="Undo last (U)">Undo</button>
     <button id="btn-export" title="Export keepers (E)">Export</button>
-    <button id="btn-help" title="Help (?)">?</button>
+    <button id="btn-help" title="Help (?)" aria-label="Keyboard help">?</button>
   </div>
 </header>
 <div class="filters" id="filters">
@@ -1295,13 +1441,13 @@ INDEX_HTML = r"""<!doctype html>
   <button class="chip" data-filter="reject">Rejected <span class="count" id="fc-reject">0</span></button>
   <button class="chip" data-filter="rejected-input" id="chip-rejected-input" style="display:none">Pipeline rejects <span class="count" id="fc-rejected-input">0</span></button>
   <div class="spacer"></div>
-  <select class="sort" id="sort-select" title="Sort order">
+  <select class="sort" id="sort-select" title="Sort order" aria-label="Sort photos">
     <option value="score">Sort: score</option>
     <option value="capture-time">Sort: capture time</option>
     <option value="name">Sort: filename</option>
   </select>
 </div>
-<main>
+<main id="main" tabindex="-1" aria-label="Photos">
   <div class="grid" id="grid"></div>
 </main>
 <footer>
@@ -1311,37 +1457,38 @@ INDEX_HTML = r"""<!doctype html>
   <div id="pos"></div>
 </footer>
 
-<div id="focus-view">
-  <div class="close-hint">Enter or Esc to close</div>
+<div id="focus-view" role="dialog" aria-modal="true" aria-labelledby="focus-name" tabindex="-1">
+  <button id="focus-close">Close photo (Esc)</button>
   <img id="focus-img" alt="">
   <div class="focus-meta">
     <span><strong id="focus-name"></strong></span>
     <span id="focus-capture" class="prompt-line"></span>
   </div>
-  <div class="focus-stats" id="focus-stats" aria-label="photo score details">
+  <div class="focus-stats" id="focus-stats" role="group" aria-label="photo score details">
     <span id="focus-quality">quality <span class="val" id="focus-score"></span> <span class="pct" id="focus-pct"></span></span>
     <span id="focus-ai" style="display:none">ai <span class="val" id="focus-ai-score"></span></span>
     <span id="focus-ai-reason" class="reason"></span>
     <span id="focus-culled" class="culled" style="display:none">culled: <span id="focus-reject-reason"></span></span>
   </div>
-  <div id="focus-similar" aria-label="similar frames">
+  <div id="focus-similar" role="group" aria-label="similar frames">
     <div class="sim-label">burst — click a frame or press its number to make it the pick</div>
     <div class="sim-row" id="focus-similar-row"></div>
   </div>
 </div>
 
-<div id="export-dialog">
+<div id="export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title" tabindex="-1">
   <div class="box">
-    <h2>Export keepers</h2>
+    <h2 id="export-title">Export keepers</h2>
     <div style="color: var(--muted); font-size: 11px; margin-bottom: 8px;">
       Copies to a folder. HEIC transcoded to JPG by default. Originals untouched.
     </div>
+    <label for="export-target">Output folder</label>
     <input type="text" id="export-target" placeholder="/absolute/path/to/output" autocomplete="off">
     <label><input type="checkbox" id="export-undecided"> Include undecided (treat un-marked as keepers)</label>
     <label><input type="checkbox" id="export-no-convert"> Keep HEIC as HEIC (no transcode)</label>
     <label><input type="checkbox" id="export-manifest" checked> Write manifest.json alongside exports</label>
     <label><input type="checkbox" id="export-xmp"> Embed XMP star ratings into JPEG copies (Lightroom-readable)</label>
-    <div id="export-result"></div>
+    <div id="export-result" role="status" aria-live="polite"></div>
     <div class="actions">
       <button id="export-cancel">Cancel</button>
       <button id="export-run" class="primary">Copy keepers</button>
@@ -1349,9 +1496,9 @@ INDEX_HTML = r"""<!doctype html>
   </div>
 </div>
 
-<div id="help-dialog">
+<div id="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-title" tabindex="-1">
   <div class="box">
-    <h2>Keyboard</h2>
+    <h2 id="help-title">Keyboard</h2>
     <dl>
       <dt>K</dt><dd>Keep the focused photo, advance to next undecided</dd>
       <dt>X</dt><dd>Reject the focused photo, advance to next undecided</dd>
@@ -1368,7 +1515,7 @@ INDEX_HTML = r"""<!doctype html>
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="progress-screen">
   <h2>photopicker · cull in progress</h2>
@@ -1381,7 +1528,7 @@ INDEX_HTML = r"""<!doctype html>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
-const state = { session: null, focus: 0, filter: 'all', sort: 'score' };
+const state = { session: null, focus: 0, filter: 'all', sort: 'score', swapping: false, mutating: false, needsSync: false, epoch: 0 };
 
 function photoUrl(idx, width, c, member) {
   // The v param busts the browser cache when a swap changes which file
@@ -1440,6 +1587,7 @@ function updateFilterCounts() {
 
 async function fetchState() {
   const r = await fetch('/state');
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return await r.json();
 }
 async function postJSON(path, body) {
@@ -1465,13 +1613,20 @@ function renderGrid() {
   grid.innerHTML = '';
   const visible = visibleCandidates();
   visible.forEach((c, positionInFilter) => {
-    const card = document.createElement('div');
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.setAttribute('aria-label', `Review ${c.filename}${c.decision ? ', ' + c.decision : ''}`);
     const classes = ['card'];
     if (c.decision) classes.push(c.decision);
     if (c.idx === state.focus) classes.push('focused');
     if (c.rejected_reason) classes.push('rejected-input');
     card.className = classes.join(' ');
     card.dataset.idx = c.idx;
+    card.addEventListener('focus', () => {
+      state.focus = c.idx;
+      document.querySelectorAll('#grid .card').forEach((item) => item.classList.toggle('focused', item === card));
+      updatePos();
+    });
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.src = photoUrl(c.idx, 480, c);
@@ -1498,7 +1653,11 @@ function renderGrid() {
     const scoreBits = [];
     if (!c.rejected_reason) scoreBits.push(`q ${(c.score * 100).toFixed(0)}`);
     if (c.ai_score != null) scoreBits.push(`ai ${c.ai_score}`);
-    meta.innerHTML = `<span>${c.filename}</span><span>${scoreBits.join(' · ')}</span>`;
+    const name = document.createElement('span');
+    name.textContent = c.filename;
+    const score = document.createElement('span');
+    score.textContent = scoreBits.join(' · ');
+    meta.append(name, score);
     card.appendChild(meta);
     if (!c.rejected_reason && c.similar && c.similar.length) {
       const sim = document.createElement('div');
@@ -1522,7 +1681,7 @@ function focusedCard() {
 
 function scrollFocusIntoView() {
   const el = focusedCard();
-  if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  if (el) el.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 function updatePos() {
@@ -1532,12 +1691,10 @@ function updatePos() {
 }
 
 async function refresh() {
-  state.session = await fetchState();
-  $('src').textContent = state.session.source_folder;
-  renderLeds(state.session.counts);
-  updateFilterCounts();
-  renderGrid();
-  updatePos();
+  const epoch = state.epoch;
+  const session = await fetchState();
+  if (state.mutating || state.epoch !== epoch) return;
+  applySession(session);
 }
 
 function toast(msg, ms = 1400) {
@@ -1548,22 +1705,54 @@ function toast(msg, ms = 1400) {
   toast._t = setTimeout(() => t.classList.remove('on'), ms);
 }
 
+function applySession(session) {
+  state.session = session;
+  $('src').textContent = session.source_folder;
+  renderLeds(session.counts);
+  updateFilterCounts();
+  renderGrid();
+  updatePos();
+}
+async function reconcileSession() {
+  state.needsSync = true;
+  try {
+    applySession(await fetchState());
+    state.needsSync = false;
+    toast('Current session reloaded. Review it before making another change.', 6000);
+  } catch (error) {
+    toast('Session unavailable. Changes are blocked until it can be reloaded.', 6000);
+  }
+}
+async function runMutation(path, body, apply) {
+  if (state.mutating) return toast('Wait for the current operation to finish');
+  state.mutating = true;
+  state.epoch++;
+  try {
+    if (state.needsSync) { await reconcileSession(); return; }
+    const r = await postJSON(path, body);
+    if (!r.ok) {
+      await reconcileSession();
+      return toast('Change failed: ' + (r.text || r.status) + ' Review the current session.', 6000);
+    }
+    apply(r.json);
+  } catch (error) {
+    await reconcileSession();
+    toast('Change outcome was unconfirmed. Review the reloaded session before retrying.', 6000);
+  } finally {
+    state.mutating = false;
+  }
+}
+
 async function decide(decision) {
   if (!state.session) return;
   const idx = state.focus;
   const focused = state.session.candidates.find((c) => c.idx === idx);
-  if (focused && focused.rejected_reason) {
-    toast('cannot mark a pipeline reject — filter Pipeline rejects to rescue');
-    return;
-  }
-  const r = await postJSON('/decision', { idx, decision });
-  if (!r.ok) return toast('decision failed');
-  state.session = r.json.state;
-  renderLeds(state.session.counts);
-  updateFilterCounts();
-  renderGrid();
-  updatePos();
-  if (decision === 'keep' || decision === 'reject') advanceToUndecided();
+  if (focused && focused.rejected_reason) return toast('cannot mark a pipeline reject — filter Pipeline rejects to rescue');
+  return runMutation('/decision', {idx, decision}, (j) => {
+    applySession(j.state);
+    if (state.focus === idx && (decision === 'keep' || decision === 'reject')) advanceToUndecided();
+    if ($('focus-view').classList.contains('on')) openFocus();
+  });
 }
 
 function advanceToUndecided() {
@@ -1599,17 +1788,16 @@ function move(delta) {
 }
 
 async function undo() {
-  const r = await postJSON('/undo');
-  if (!r.ok) return toast('nothing to undo');
-  if (r.json.undone_idx == null) return toast('nothing to undo');
-  state.session = r.json.state;
-  state.focus = r.json.undone_idx;
-  renderLeds(state.session.counts);
-  updateFilterCounts();
-  renderGrid();
-  scrollFocusIntoView();
-  updatePos();
-  toast('undone');
+  const focus = state.focus;
+  return runMutation('/undo', {}, (j) => {
+    applySession(j.state);
+    if (j.undone_idx == null) return toast('nothing to undo');
+    if (state.focus === focus) state.focus = j.undone_idx;
+    renderGrid();
+    scrollFocusIntoView();
+    updatePos();
+    toast('undone');
+  });
 }
 
 function qualityPercentile(c) {
@@ -1625,13 +1813,46 @@ function qualityPercentile(c) {
   return Math.max(1, Math.round((rank / scores.length) * 100));
 }
 
+const dialogReturns = new Map();
+function pageInert(value) {
+  document.querySelectorAll('body > header, #filters, main, footer, .skip-link').forEach((node) => node.inert = value);
+}
+function openDialog(id, initial) {
+  const dialog = $(id);
+  if (!dialog.classList.contains('on')) dialogReturns.set(id, document.activeElement);
+  dialog.classList.add('on');
+  pageInert(true);
+  if (!dialog.contains(document.activeElement)) $(initial).focus();
+}
+function closeDialog(id, fallback) {
+  const dialog = $(id);
+  if (!dialog.classList.contains('on')) return;
+  dialog.classList.remove('on');
+  pageInert(false);
+  const previous = dialogReturns.get(id);
+  const target = previous?.isConnected && previous !== document.body && previous.getClientRects().length ? previous : fallback();
+  target?.focus();
+  dialogReturns.delete(id);
+}
+function trapDialogTab(ev, dialog) {
+  const items = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')]
+    .filter((node) => node.getClientRects().length);
+  const first = items[0] || dialog, last = items[items.length - 1] || dialog;
+  if (ev.shiftKey && (document.activeElement === first || !items.includes(document.activeElement))) {
+    ev.preventDefault(); last.focus();
+  } else if (!ev.shiftKey && (document.activeElement === last || !items.includes(document.activeElement))) {
+    ev.preventDefault(); first.focus();
+  }
+}
+
 function openFocus() {
   if (!state.session || !state.session.candidates.length) return;
   const c = state.session.candidates.find((x) => x.idx === state.focus)
          || state.session.candidates[0];
   if (!c) return;
   state.focus = c.idx;
-  $('focus-img').src = `/photo/${c.idx}?w=1200`;
+  $('focus-img').src = photoUrl(c.idx, 1200, c);
+  $('focus-img').alt = c.filename;
   $('focus-name').textContent = c.filename;
   if (c.rejected_reason) {
     // Pipeline reject — its 0.0 score is a sentinel, not a measurement.
@@ -1654,9 +1875,59 @@ function openFocus() {
     $('focus-ai-reason').textContent = '';
   }
   $('focus-capture').textContent = c.capture_time ? formatCaptureTime(c.capture_time) : '';
-  $('focus-view').classList.add('on');
+  renderSimilar(c);
+  openDialog('focus-view', 'focus-close');
 }
-function closeFocus() { $('focus-view').classList.remove('on'); }
+
+function renderSimilar(c) {
+  const row = $('focus-similar-row');
+  row.replaceChildren();
+  row.setAttribute('aria-busy', String(state.swapping));
+  const hasSimilar = !c.rejected_reason && c.similar && c.similar.length > 0;
+  $('focus-similar').classList.toggle('on', !!hasSimilar);
+  $('focus-view').classList.toggle('has-similar', !!hasSimilar);
+  if (!hasSimilar) return;
+  [c, ...c.similar].forEach((frame, position) => {
+    const member = position === 0 ? null : position - 1;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sim-card' + (position === 0 ? ' current' : '');
+    button.setAttribute('aria-pressed', String(position === 0));
+    button.setAttribute('aria-label', `${position === 0 ? 'Current pick' : 'Use'}: ${frame.filename}`);
+    button.disabled = state.swapping;
+    const img = document.createElement('img');
+    img.src = photoUrl(c.idx, 264, c, member);
+    img.alt = '';
+    const key = document.createElement('span');
+    key.className = 'key';
+    key.textContent = position === 0 ? '1 · pick' : position < 9 ? String(position + 1) : 'pick';
+    const label = document.createElement('div');
+    label.className = 'sim-meta';
+    label.textContent = frame.filename;
+    button.append(img, key, label);
+    if (member != null) button.addEventListener('click', () => swapFrame(c.idx, member));
+    row.appendChild(button);
+  });
+}
+
+async function swapFrame(idx, member) {
+  if (state.mutating) return toast('Wait for the current operation to finish');
+  state.swapping = true;
+  renderSimilar(state.session.candidates.find((c) => c.idx === idx));
+  try {
+    await runMutation('/swap', {idx, member}, (j) => {
+      applySession(j.state);
+      toast('Pick changed — select the previous frame to switch back');
+    });
+  } finally {
+    state.swapping = false;
+    if ($('focus-view').classList.contains('on')) {
+      openFocus();
+      if (state.focus === idx) $('focus-similar-row').querySelector('.current')?.focus();
+    }
+  }
+}
+function closeFocus() { closeDialog('focus-view', focusedCard); }
 function toggleFocus() {
   if ($('focus-view').classList.contains('on')) closeFocus(); else openFocus();
 }
@@ -1665,45 +1936,61 @@ function openExport() {
   $('export-result').style.display = 'none';
   $('export-result').classList.remove('err');
   $('export-target').value = state.session ? (state.session.source_folder + '/keepers') : '';
-  $('export-dialog').classList.add('on');
-  setTimeout(() => $('export-target').focus(), 50);
+  openDialog('export-dialog', 'export-target');
 }
-function closeExport() { $('export-dialog').classList.remove('on'); }
+function closeExport() { closeDialog('export-dialog', () => $('btn-export')); }
 
 async function runExport() {
+  if (state.mutating) return toast('Wait for the current operation to finish');
   const target = $('export-target').value.trim();
   if (!target) return;
-  const body = {
-    target,
-    include_undecided: $('export-undecided').checked,
-    convert_heic: !$('export-no-convert').checked,
-    write_manifest: $('export-manifest').checked,
-    xmp: $('export-xmp').checked,
-  };
-  const r = await postJSON('/export', body);
+  state.mutating = true;
+  state.epoch++;
   const box = $('export-result');
   box.style.display = 'block';
-  if (!r.ok) {
-    box.classList.add('err');
-    box.textContent = 'Export failed: ' + (r.text || r.status);
-    return;
-  }
-  const j = r.json;
   box.classList.remove('err');
-  let msg = `Copied ${j.exported} keepers → ${j.target}`;
-  if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
-  if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
-  if (j.override) msg += ` · ${j.override.line}`;
-  box.textContent = msg;
-  toast(msg);
+  box.textContent = 'Exporting…';
+  try {
+    if (state.needsSync) { await reconcileSession(); box.textContent = 'Review the current session before exporting.'; return; }
+    const r = await postJSON('/export', {
+      target,
+      include_undecided: $('export-undecided').checked,
+      convert_heic: !$('export-no-convert').checked,
+      write_manifest: $('export-manifest').checked,
+      xmp: $('export-xmp').checked,
+    });
+    if (!r.ok) throw new Error(r.text || `HTTP ${r.status}`);
+    const j = r.json;
+    let msg = `Copied ${j.exported} keepers → ${j.target}`;
+    if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
+    if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
+    if (j.override) msg += ` · ${j.override.line}`;
+    for (const failure of j.failures || []) msg += ` · ${failure.file} (${failure.stage}): ${failure.error}`;
+    if (j.manifest_error) msg += ` · Manifest failed: ${j.manifest_error}`;
+    if (j.complete === false) { box.classList.add('err'); msg += ' · Export incomplete; check the output before retrying.'; }
+    box.textContent = msg;
+    toast(msg, 6000);
+  } catch (error) {
+    box.classList.add('err');
+    box.textContent = 'Export outcome unconfirmed: ' + error.message + '. Check the output folder before retrying; files may already exist.';
+  } finally {
+    state.mutating = false;
+  }
 }
 
-function openHelp() { $('help-dialog').classList.add('on'); }
-function closeHelp() { $('help-dialog').classList.remove('on'); }
+function openHelp() { openDialog('help-dialog', 'help-close'); }
+function closeHelp() { closeDialog('help-dialog', () => $('btn-help')); }
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.target.tagName === 'INPUT') return;
+  if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
   const key = ev.key.toLowerCase();
+  const dialog = document.querySelector('#export-dialog.on, #help-dialog.on, #focus-view.on');
+  if (dialog && key === 'tab') { trapDialogTab(ev, dialog); return; }
+  if (dialog && key === 'escape') {
+    ({'export-dialog': closeExport, 'help-dialog': closeHelp, 'focus-view': closeFocus})[dialog.id]();
+    ev.preventDefault(); return;
+  }
+  if (ev.target.closest('input, textarea, select, [contenteditable="true"]')) return;
   if ($('export-dialog').classList.contains('on')) {
     if (key === 'escape') closeExport();
     return;
@@ -1713,7 +2000,15 @@ document.addEventListener('keydown', (ev) => {
     return;
   }
   if ($('focus-view').classList.contains('on')) {
+    if (key === 'enter' && ev.target.closest('button')) return;
     if (key === 'escape' || key === 'enter') { closeFocus(); ev.preventDefault(); return; }
+    if (/^[1-9]$/.test(key)) {
+      const candidate = state.session.candidates.find((c) => c.idx === state.focus);
+      const member = Number(key) - 2;
+      if (member >= 0 && member < (candidate.similar || []).length) swapFrame(candidate.idx, member);
+      ev.preventDefault();
+      return;
+    }
     if (key === 'k') { decide('keep'); ev.preventDefault(); return; }
     if (key === 'x') { decide('reject'); ev.preventDefault(); return; }
     if (key === 'arrowleft') { move(-1); openFocus(); ev.preventDefault(); return; }
@@ -1727,7 +2022,7 @@ document.addEventListener('keydown', (ev) => {
   else if (key === 'arrowright') { move(1); ev.preventDefault(); }
   else if (key === 'arrowup') { move(-4); ev.preventDefault(); }
   else if (key === 'arrowdown') { move(4); ev.preventDefault(); }
-  else if (key === 'enter') { toggleFocus(); ev.preventDefault(); }
+  else if (key === 'enter' && !ev.target.closest('button, a')) { toggleFocus(); ev.preventDefault(); }
   else if (key === 'e') { openExport(); ev.preventDefault(); }
   else if (key === 'f') { cycleFilter(); ev.preventDefault(); }
   else if (key === '?') { openHelp(); ev.preventDefault(); }
@@ -1749,6 +2044,7 @@ $('btn-help').addEventListener('click', openHelp);
 $('export-cancel').addEventListener('click', closeExport);
 $('export-run').addEventListener('click', runExport);
 $('help-close').addEventListener('click', closeHelp);
+$('focus-close').addEventListener('click', closeFocus);
 $('focus-view').addEventListener('click', (ev) => {
   if (ev.target.id === 'focus-view') closeFocus();
 });

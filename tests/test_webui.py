@@ -426,6 +426,80 @@ def test_store_swap_is_reversible(tmp_path: Path):
     assert c.similar[0]["path"] == str(loser)
 
 
+def test_swapped_selection_and_decision_survive_rebuild(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    store.decide(0, "keep")
+    store.swap(0, 0)
+    rebuilt = build_session(
+        tmp_path, [winner], scores={winner: 0.95, loser: 0.65},
+        ai_scores={winner: (8, "old winner only")}, clusters={winner: [loser]},
+    )
+    current = rebuilt.candidates[0]
+    assert current.path == str(loser)
+    assert current.filename == loser.name
+    assert current.score == pytest.approx(0.65)  # fresh scores, not saved ones
+    assert current.decision == "keep"
+    assert current.similar[0]["path"] == str(winner)
+    assert current.ai_score is None and current.ai_reason == ""
+
+
+def test_changed_burst_does_not_restore_previous_selection(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    store.decide(0, "keep")
+    store.swap(0, 0)
+    replacement = _make(tmp_path, "new-frame.png", 3)
+    rebuilt = build_session(tmp_path, [winner], clusters={winner: [replacement]})
+    assert rebuilt.candidates[0].path == str(winner)
+    assert rebuilt.candidates[0].decision == ""
+    assert rebuilt.candidates[0].similar[0]["path"] == str(replacement)
+
+
+@pytest.mark.parametrize("saved", [
+    [], {"candidates": None}, {"candidates": [None]},
+    {"candidates": [{"path": "not-current", "similar": None}]},
+])
+def test_malformed_saved_session_keeps_fresh_candidates(tmp_path: Path, saved):
+    image = _make(tmp_path, "fresh.png")
+    (tmp_path / ".photopicker-session.json").write_text(json.dumps(saved))
+    rebuilt = build_session(tmp_path, [image])
+    assert rebuilt.candidates[0].path == str(image)
+    assert rebuilt.candidates[0].decision == ""
+
+
+def test_saved_burst_cannot_add_a_path_outside_current_candidates(tmp_path: Path):
+    store, winner, loser = _store_with_burst(tmp_path)
+    saved = store.get().to_dict()
+    saved["candidates"][0].update(path="/unapproved-image.jpg", decision="keep")
+    saved["candidates"][0]["similar"] = [{"path": str(winner)}, {"path": str(loser)}]
+    store.session_path.write_text(json.dumps(saved))
+    rebuilt = build_session(tmp_path, [winner], clusters={winner: [loser]})
+    assert rebuilt.candidates[0].path == str(winner)
+    assert rebuilt.candidates[0].decision == ""
+
+
+@pytest.mark.parametrize("method,path", [("do_GET", "/health"), ("do_POST", "/shutdown")])
+@pytest.mark.parametrize("error", [BrokenPipeError, ConnectionResetError, ConnectionAbortedError])
+def test_disconnected_browser_does_not_trigger_second_response(method, path, error):
+    from email.message import Message
+
+    from photopicker.webui import _ThumbCache, make_handler
+
+    handler = object.__new__(make_handler(None, _ThumbCache(), threading.Event()))
+    handler.path = path
+    handler.headers = Message()
+    handler.headers["Content-Type"] = "application/json"
+    handler._local_request = lambda: True
+    responses = []
+
+    def disconnected(status, *args, **kwargs):
+        responses.append(status)
+        raise error("synthetic browser disconnected")
+
+    handler._send_text = disconnected
+    getattr(handler, method)()
+    assert responses == [200]
+
+
 def test_store_swap_bad_idx_raises(tmp_path: Path):
     store, _, _ = _store_with_burst(tmp_path)
     with pytest.raises(IndexError):
@@ -551,6 +625,51 @@ def test_http_state_returns_session(running_server):
     assert "application/json" in ctype
     payload = json.loads(body)
     assert payload["counts"]["total"] == 4
+
+
+@pytest.mark.parametrize("headers", [
+    {"Origin": "https://unrelated.invalid"},
+    {"Origin": "null"},
+    {"Host": "rebound.invalid"},
+    {"Sec-Fetch-Site": "cross-site"},
+    {"Content-Type": "text/plain"},
+])
+def test_http_rejects_foreign_write_before_mutation(running_server, headers):
+    base, store, _ = running_server
+    before = store.get().to_dict()
+    request = urllib.request.Request(
+        f"{base}/decision", data=b'{"idx":0,"decision":"keep"}', method="POST",
+        headers={"Content-Type": "application/json", **headers},
+    )
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=5)
+    assert caught.value.code in (403, 415)
+    assert store.get().to_dict() == before
+
+
+@pytest.mark.parametrize("headers", [
+    {"Host": "rebound.invalid"},
+    {"Origin": "https://unrelated.invalid"},
+    {"Sec-Fetch-Site": "cross-site"},
+])
+def test_http_rejects_foreign_session_read(running_server, headers):
+    base, _, _ = running_server
+    request = urllib.request.Request(f"{base}/state", headers=headers)
+    with pytest.raises(urllib.error.HTTPError) as caught:
+        urllib.request.urlopen(request, timeout=5)
+    assert caught.value.code == 403
+
+
+def test_http_same_origin_json_write_still_works(running_server):
+    base, store, _ = running_server
+    request = urllib.request.Request(
+        f"{base}/decision", data=b'{"idx":0,"decision":"keep"}', method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8", "Origin": base,
+                 "Sec-Fetch-Site": "same-origin"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert response.status == 200
+    assert store.get().candidates[0].decision == "keep"
 
 
 def test_http_root_returns_html(running_server):
@@ -961,3 +1080,168 @@ def test_http_export_without_manifest_flag_skips(tmp_path: Path, running_server)
     assert status == 200
     assert "manifest_written" not in payload
     assert not (target / "manifest.json").exists()
+
+
+@pytest.mark.parametrize("operation", ["decide", "undo", "reset", "hydrate", "swap"])
+def test_failed_checkpoint_preserves_disk_and_session(tmp_path, monkeypatch, operation):
+    store, paths = _fresh_store(tmp_path)
+    store.decide(0, "keep")
+    store.session.candidates[0].similar = [{"path": str(paths[1]), "filename": paths[1].name, "score": 0.2}]
+    store._save()
+    before_disk = store.session_path.read_bytes()
+    before_state = store.get().to_dict()
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("synthetic replacement failure")
+
+    monkeypatch.setattr("os.replace", fail_replace)
+    actions = {
+        "decide": lambda: store.decide(1, "reject"),
+        "undo": store.undo,
+        "reset": store.reset,
+        "hydrate": lambda: store.hydrate(Session("synthetic", [])),
+        "swap": lambda: store.swap(0, 0),
+    }
+    with pytest.raises(OSError, match="synthetic replacement failure"):
+        actions[operation]()
+    assert store.session_path.read_bytes() == before_disk
+    assert store.get().to_dict() == before_state
+
+
+def test_partial_checkpoint_write_preserves_previous_json(tmp_path, monkeypatch):
+    store, _ = _fresh_store(tmp_path)
+    before = store.session_path.read_bytes()
+
+    def fail_dump(value, stream, **kwargs):
+        stream.write('{"partial":')
+        raise OSError("synthetic disk full")
+
+    monkeypatch.setattr(json, "dump", fail_dump)
+    with pytest.raises(OSError, match="synthetic disk full"):
+        store.decide(0, "keep")
+    assert store.session_path.read_bytes() == before
+    assert store.get().candidates[0].decision == ""
+
+
+@pytest.mark.parametrize("route,body", [
+    ("/decision", {"idx": 1, "decision": "reject"}),
+    ("/undo", {}), ("/reset", {}),
+])
+def test_http_failed_checkpoint_reports_failure_and_preserves_state(running_server, monkeypatch, route, body):
+    base, store, _ = running_server
+    store.decide(0, "keep")
+    before = store.get().to_dict()
+    checkpoint = store.session_path.read_bytes()
+
+    def fail_replace(*args, **kwargs):
+        raise OSError("synthetic disk failure")
+
+    monkeypatch.setattr("os.replace", fail_replace)
+    code, response = _http_post(base + route, body)
+    assert code == 500
+    assert "could not be saved" in response
+    assert store.get().to_dict() == before
+    assert store.session_path.read_bytes() == checkpoint
+
+
+@pytest.mark.parametrize("failure", ["copy", "manifest", "xmp"])
+def test_export_reports_partial_outputs(tmp_path, running_server, monkeypatch, failure):
+    import photopicker.webui as ui
+
+    base, store, paths = running_server
+    store.decide(0, "keep")
+    store.decide(1, "keep")
+    original_copy = ui.copy_or_transcode
+    original_write = Path.write_text
+
+    def copy(src, target, **kwargs):
+        if failure == "copy" and src == paths[0]:
+            raise OSError("synthetic copy failure")
+        return original_copy(src, target, **kwargs)
+
+    def write(path, *args, **kwargs):
+        if failure == "manifest" and path.name == "manifest.json":
+            raise OSError("synthetic manifest failure")
+        return original_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(ui, "copy_or_transcode", copy)
+    monkeypatch.setattr(Path, "write_text", write)
+    monkeypatch.setattr(ui, "embed_xmp_rating", lambda *args: False)
+    target = tmp_path / "partial-export"
+    code, payload = _http_post(base + "/export", {
+        "target": str(target), "write_manifest": True, "xmp": failure == "xmp",
+    })
+    assert code == 200
+    assert payload["complete"] is False
+    assert payload["requested"] == 2
+    assert payload["exported"] == (1 if failure == "copy" else 2)
+    assert all((target / name).is_file() for name in payload["files"])
+    if failure == "manifest":
+        assert "synthetic manifest failure" in payload["manifest_error"]
+    else:
+        assert payload["failures"][0]["stage"] == failure
+        assert payload["failures"][0]["file"] == paths[0].name
+
+
+
+def test_session_snapshot_never_changes_after_mutation(tmp_path):
+    store, _ = _fresh_store(tmp_path)
+    snapshot = store.get()
+    store.decide(0, "keep")
+    assert snapshot.candidates[0].decision == ""
+    snapshot.candidates[1].decision = "reject"
+    assert store.get().candidates[1].decision == ""
+
+
+def test_successful_checkpoint_does_not_run_fallible_cleanup(tmp_path, monkeypatch):
+    store, _ = _fresh_store(tmp_path)
+    def fail_cleanup(*args, **kwargs):
+        raise OSError("synthetic cleanup failure")
+    monkeypatch.setattr(Path, "unlink", fail_cleanup)
+    store.decide(0, "keep")
+    assert store.get().candidates[0].decision == "keep"
+    assert json.loads(store.session_path.read_text())["candidates"][0]["decision"] == "keep"
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_checkpoint_retries_only_bounded_permission_failure(tmp_path, monkeypatch, persistent):
+    import os
+    store, _ = _fresh_store(tmp_path)
+    before = store.session_path.read_bytes()
+    replace = os.replace
+    attempts = []
+    def busy(source, target):
+        attempts.append(1)
+        if persistent or len(attempts) < 3:
+            raise PermissionError("synthetic open handle")
+        replace(source, target)
+    monkeypatch.setattr(os, "replace", busy)
+    if persistent:
+        with pytest.raises(OSError, match="synthetic open handle"):
+            store.decide(0, "keep")
+        assert store.session_path.read_bytes() == before
+        assert store.get().candidates[0].decision == ""
+    else:
+        store.decide(0, "keep")
+        assert store.get().candidates[0].decision == "keep"
+        assert json.loads(store.session_path.read_text())["candidates"][0]["decision"] == "keep"
+    assert len(attempts) == 3
+
+
+
+def test_export_manifest_uses_same_snapshot_as_copied_paths(tmp_path, running_server_with_burst, monkeypatch):
+    import photopicker.webui as ui
+    base, store, winner, loser = running_server_with_burst
+    store.decide(0, "keep")
+    original = ui.copy_or_transcode
+    def copy(src, target, **kwargs):
+        store.swap(0, 0)
+        return original(src, target, **kwargs)
+    monkeypatch.setattr(ui, "copy_or_transcode", copy)
+    target = tmp_path / "snapshot-export"
+    code, payload = _http_post(base + "/export", {"target": str(target), "write_manifest": True})
+    assert code == 200 and payload["complete"]
+    assert payload["files"] == [winner.name]
+    manifest = json.loads((target / "manifest.json").read_text())
+    assert len(manifest["picks"]) == 1
+    assert store.get().candidates[0].path == str(loser)

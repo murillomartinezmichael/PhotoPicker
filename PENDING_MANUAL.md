@@ -3,6 +3,8 @@
 Manual gates only Mike can clear. Each item: What / Why / Resumes + a checkbox.
 Agent keeps working past these; sweep on your own cadence.
 
+**2026-10-03 precedence:** the July packaging receipt below is historical. Complete PP-TARGET-MATRIX, PP-JOINT-ACCEPTANCE and PP-RELEASE-DECISION before considering a candidate upload; old dist files do not qualify. The old n8n item remains held/inactive and its cancelled plan is not renewed.
+
 - [ ] **Publish photopicker 0.14.0 to PyPI — packaging fully prepped 2026-07-20, only the account/token/upload step remains.**
   - **What's done:** `pyproject.toml` metadata completed (License classifier + SPDX-equivalent MIT license file, `project.urls` for Homepage/Repository/Issues/Changelog, author email, expanded classifiers). Built and verified: `python -m build` produces both `photopicker-0.14.0-py3-none-any.whl` and `photopicker-0.14.0.tar.gz`; `twine check dist/*` → **PASSED** for both. README renders correctly as the wheel's `text/markdown` long_description (confirmed by unzipping the wheel and inspecting `METADATA`). Installed the built wheel into a throwaway venv and ran a real smoke test: `import photopicker` succeeds, `pick_photos` is importable and callable, and both CLI entry points (`photopicker`, `photopicker-cull`) execute (the `photopicker --help` command hits a pre-existing, unrelated Windows Git-Bash `cp1252` console-encoding issue on a `→` character in its help text — reproduces identically in the plain dev `.venv` too, fixed by `PYTHONIOENCODING=utf-8`, not a packaging defect). README audited for anything that shouldn't be public — repo is already public on GitHub, nothing to redact. Exact upload steps written to `PUBLISHING.md`.
   - **What to do:** Create/log into a PyPI account (+ 2FA), mint an API token, then from the repo root follow `PUBLISHING.md` — TestPyPI dry run recommended first, then `twine upload dist/*`.
@@ -25,3 +27,17 @@ Agent keeps working past these; sweep on your own cadence.
   - **Decision:** Mike picked a permissively-licensed pretrained model over training one — MediaPipe Face Mesh (Apache License 2.0, Google), using the published Eye Aspect Ratio (EAR) technique against its iris-refined landmarks. No training/labeled data needed, unlike the YuNet + custom-classifier path this item originally scoped.
   - **Shipped:** `photopicker/faces.py` (`face_eye_score()`), wired into `culler.cull()` behind `face_gate=False` default / `--faces` CLI flag (opt-in — never changes existing profile behavior silently). New `[faces]` extra in `pyproject.toml` (`pip install "photopicker[faces]"`), pinned `mediapipe==0.10.21` (0.10.22+ dropped the offline legacy API this module uses). Tests in `tests/test_faces.py` (7 new, all green) — includes a real culler-ranking integration test proving the eye-open frame gets kept over an otherwise-sharper closed-eye frame once the gate is on.
   - **Not done:** Not installed in CI (matches how `[clip]`/`[vision]` are handled — opt-in extras aren't part of the default matrix). Not wired into any built-in profile (aries/big7/default/aries-gallery) — CLI-level `cull()` only, per today's scope. A future ask to gate a themed profile on face/eye state is a small follow-up, not blocked on anything.
+
+
+## PP-TARGET-MATRIX — 2026-10-03 clarification
+
+- [ ] Existing release owner/Michael: after local review work, qualify exact candidate wheel/sdist and declared Python3.10/3.11/3.12 matrix through an approved environment. Current local Python3.10.11 has build1.5.0/setuptools78.1.0 but lacks the declared wheel dependency; no install authorized or performed. Prerequisite: approved dependency/environment route, then fresh candidate artifact hashes, build metadata and smoke results. Old dist is not current proof. Resumes candidate/package decision only; upload/private-media/model gates remain separate.
+
+
+## PP-JOINT-ACCEPTANCE — current local candidate
+
+- [ ] Michael with Codex /root: use docs/verification/ui-2026-10-03/JOINT_ACCEPTANCE.json. Prerequisite: reviewed candidate and approved synthetic fixture. Record separate keyboard/dialog/export/burst observations and reconcile differences; record Narrator/high contrast/physical-DPI findings on the actual device. Any real client-media or model-quality check additionally needs the approved custody/model route. Acceptance: expected behavior observed on the exact candidate, observations filled, differences closed or tracked. This is not blanket live-provider permission.
+
+## PP-RELEASE-DECISION — candidate remains separate from main
+
+- [ ] Michael/release owner: after PP-TARGET-MATRIX and joint acceptance, review the exact candidate/diff and decide main integration. Preserve other branches and the untracked native cache. Acceptance: approved target revision plus package hashes and checks, separate explicit authority for any push, PyPI account/token action or upload. No current production/release claim.

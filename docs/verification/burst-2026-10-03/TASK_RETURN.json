@@ -1,0 +1,37 @@
+{
+  "task": "PP-REVIEW-BURST",
+  "owner": "Codex /root; Michael release/model/private-media gates retained",
+  "status": "CHECKPOINTED",
+  "source_base": "88adec085edf7698fb26e75ceb553561b89c6907",
+  "implementation": "Existing burst comparison, click/number/native keyboard swap, current preview cache identity, stale-AI clearing and exact-group restart restoration completed locally. Disconnected clients no longer trigger a second response; keep/reject updates visible focus.",
+  "files_touched": [
+    "photopicker/webui.py",
+    "tests/test_webui.py",
+    "README.md",
+    "CHANGELOG.md",
+    "TODO.md",
+    "docs/verification/burst-2026-10-03/"
+  ],
+  "verification": "79 focused Python tests passed (73+6);17 native check observations across initial and fresh server runs. Two actual exports contain selected alternative synthetic-3.jpg with matching original hash. Combined behavioral evidence429 distinct cases, not single suite/CI claim.",
+  "qualification": "QUALIFICATION.json",
+  "actual_outputs": [
+    "restored-focus.png",
+    "sample-export/synthetic-3.jpg",
+    "sample-export/manifest.json"
+  ],
+  "remaining": [
+    "Existing local UI keyboard/dialog/mobile/accessibility acceptance",
+    "Fresh wheel/sdist and target matrix: installed build1.5.0 but declared wheel absent; no install authority",
+    "Michael joint observation, real-photo/model custody and candidate/main/publication decision"
+  ],
+  "next_action": "PP-REVIEW-ACCESSIBILITY: root finish keyboard/dialog focus handling, labels/reduced motion and practical narrow-screen review of existing local UI; fix demonstrated issues using same synthetic browser/handler. Then package/tooling gate and project requirement reconciliation. No optional-model/private-photo/production work.",
+  "release_status": "UNVERIFIED_IN_THIS_CAMPAIGN",
+  "integration": "Reviewed local candidate only; exact commit receipt saved after commit. Main preserved.",
+  "limits": [
+    "Synthetic photos only; virtual HTML-like filename models Linux naming on Windows.",
+    "Native fresh process rebuilds the actual session using existing source files and current cluster; no optional model inference.",
+    "Python audit hooks are not an OS/native I/O sandbox.",
+    "No complete accessibility/mobile/display or real-shoot/model-quality qualification; no target CI or fresh package.",
+    "Native navigation/abort behavior was exercised; request acceptance guards were not broadened."
+  ]
+}

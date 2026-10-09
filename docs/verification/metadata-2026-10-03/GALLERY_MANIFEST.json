@@ -1,0 +1,29 @@
+{
+  "profile": "aries-gallery",
+  "source": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\metadata-qualification\\fixtures",
+  "generated_at": "2026-10-03T13:43:11.530028+00:00",
+  "picks": [
+    {
+      "category": "before",
+      "rank": 1,
+      "filename": "actual-codec.heic",
+      "path": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\metadata-qualification\\fixtures\\actual-codec.heic",
+      "capture_time": "2026-10-03T09:15:00",
+      "dimensions": {
+        "width": 960,
+        "height": 640
+      },
+      "output_path": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\metadata-qualification\\accepted-export\\before-01.jpg",
+      "output_filename": "before-01.jpg",
+      "thumbnails": {
+        "320": "before-01-320w.jpg"
+      },
+      "output_webp": "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\metadata-qualification\\accepted-export\\before-01.webp",
+      "output_webp_filename": "before-01.webp",
+      "thumbnails_webp": {
+        "320": "before-01-320w.webp"
+      }
+    }
+  ],
+  "reject_counts": {}
+}

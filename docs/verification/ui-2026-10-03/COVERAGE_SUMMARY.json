@@ -1,0 +1,251 @@
+{
+  "runtime": "Windows Python3.10.11",
+  "totals": {
+    "covered_lines": 1915,
+    "num_statements": 2149,
+    "percent_covered": 89.11121451838065,
+    "percent_covered_display": "89",
+    "missing_lines": 234,
+    "excluded_lines": 10,
+    "percent_statements_covered": 89.11121451838065,
+    "percent_statements_covered_display": "89"
+  },
+  "files": {
+    "photopicker\\__init__.py": {
+      "covered_lines": 6,
+      "num_statements": 6,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\cache.py": {
+      "covered_lines": 54,
+      "num_statements": 54,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\classifier.py": {
+      "covered_lines": 45,
+      "num_statements": 66,
+      "percent_covered": 68.18181818181819,
+      "percent_covered_display": "68",
+      "missing_lines": 21,
+      "excluded_lines": 4,
+      "percent_statements_covered": 68.18181818181819,
+      "percent_statements_covered_display": "68"
+    },
+    "photopicker\\cli.py": {
+      "covered_lines": 357,
+      "num_statements": 419,
+      "percent_covered": 85.20286396181385,
+      "percent_covered_display": "85",
+      "missing_lines": 62,
+      "excluded_lines": 6,
+      "percent_statements_covered": 85.20286396181385,
+      "percent_statements_covered_display": "85"
+    },
+    "photopicker\\convert.py": {
+      "covered_lines": 107,
+      "num_statements": 114,
+      "percent_covered": 93.85964912280701,
+      "percent_covered_display": "94",
+      "missing_lines": 7,
+      "excluded_lines": 0,
+      "percent_statements_covered": 93.85964912280701,
+      "percent_statements_covered_display": "94"
+    },
+    "photopicker\\core.py": {
+      "covered_lines": 73,
+      "num_statements": 73,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\culler.py": {
+      "covered_lines": 101,
+      "num_statements": 112,
+      "percent_covered": 90.17857142857143,
+      "percent_covered_display": "90",
+      "missing_lines": 11,
+      "excluded_lines": 0,
+      "percent_statements_covered": 90.17857142857143,
+      "percent_statements_covered_display": "90"
+    },
+    "photopicker\\dedup.py": {
+      "covered_lines": 62,
+      "num_statements": 62,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\exif.py": {
+      "covered_lines": 35,
+      "num_statements": 41,
+      "percent_covered": 85.36585365853658,
+      "percent_covered_display": "85",
+      "missing_lines": 6,
+      "excluded_lines": 0,
+      "percent_statements_covered": 85.36585365853658,
+      "percent_statements_covered_display": "85"
+    },
+    "photopicker\\faces.py": {
+      "covered_lines": 22,
+      "num_statements": 58,
+      "percent_covered": 37.93103448275862,
+      "percent_covered_display": "38",
+      "missing_lines": 36,
+      "excluded_lines": 0,
+      "percent_statements_covered": 37.93103448275862,
+      "percent_statements_covered_display": "38"
+    },
+    "photopicker\\profiles\\__init__.py": {
+      "covered_lines": 5,
+      "num_statements": 5,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\profiles\\aesthetics.py": {
+      "covered_lines": 56,
+      "num_statements": 57,
+      "percent_covered": 98.24561403508773,
+      "percent_covered_display": "98",
+      "missing_lines": 1,
+      "excluded_lines": 0,
+      "percent_statements_covered": 98.24561403508773,
+      "percent_statements_covered_display": "98"
+    },
+    "photopicker\\profiles\\aries.py": {
+      "covered_lines": 47,
+      "num_statements": 48,
+      "percent_covered": 97.91666666666667,
+      "percent_covered_display": "98",
+      "missing_lines": 1,
+      "excluded_lines": 0,
+      "percent_statements_covered": 97.91666666666667,
+      "percent_statements_covered_display": "98"
+    },
+    "photopicker\\profiles\\aries_gallery.py": {
+      "covered_lines": 39,
+      "num_statements": 39,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\profiles\\big7.py": {
+      "covered_lines": 40,
+      "num_statements": 40,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\profiles\\config_profile.py": {
+      "covered_lines": 95,
+      "num_statements": 95,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\profiles\\default.py": {
+      "covered_lines": 13,
+      "num_statements": 13,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\profiles\\registry.py": {
+      "covered_lines": 42,
+      "num_statements": 42,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\quality_gate.py": {
+      "covered_lines": 39,
+      "num_statements": 39,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\scoring.py": {
+      "covered_lines": 28,
+      "num_statements": 28,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    },
+    "photopicker\\vision.py": {
+      "covered_lines": 140,
+      "num_statements": 166,
+      "percent_covered": 84.33734939759036,
+      "percent_covered_display": "84",
+      "missing_lines": 26,
+      "excluded_lines": 0,
+      "percent_statements_covered": 84.33734939759036,
+      "percent_statements_covered_display": "84"
+    },
+    "photopicker\\webui.py": {
+      "covered_lines": 465,
+      "num_statements": 528,
+      "percent_covered": 88.06818181818181,
+      "percent_covered_display": "88",
+      "missing_lines": 63,
+      "excluded_lines": 0,
+      "percent_statements_covered": 88.06818181818181,
+      "percent_statements_covered_display": "88"
+    },
+    "photopicker\\xmp.py": {
+      "covered_lines": 44,
+      "num_statements": 44,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100"
+    }
+  },
+  "test_cases": 429,
+  "excluded_tests": [
+    "tests/test_faces.py (actual model inference)"
+  ],
+  "denominator": "All photopicker modules, including faces.py; optional-model calls not qualified.",
+  "freshness": "Measured before final caption CSS; Python AST outside INDEX_HTML unchanged; no backend/test edits after measurement."
+}

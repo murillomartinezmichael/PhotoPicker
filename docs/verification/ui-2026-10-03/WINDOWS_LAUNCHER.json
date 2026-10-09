@@ -1,0 +1,116 @@
+{
+  "batch_sha256": "e39cbdacb0f70733620a87b614f9ab70eebcd75f38f6530fb290c0d3f171b37e",
+  "cases": [
+    {
+      "name": "cull-folder",
+      "argv": [
+        "cull",
+        "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\ui-qualification\\launcher-final1\\synthetic shoot & review",
+        "--top",
+        "1",
+        "--no-ai",
+        "--no-serve",
+        "--json-out",
+        "--sharpness",
+        "0",
+        "--min-long-edge",
+        "1"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true
+    },
+    {
+      "name": "pick-folder",
+      "argv": [
+        "pick",
+        "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\ui-qualification\\launcher-final1\\synthetic shoot & review",
+        "--profile",
+        "default",
+        "--dry-run",
+        "--json-out"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true
+    },
+    {
+      "name": "cull-help",
+      "argv": [
+        "cull",
+        "--help"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true
+    },
+    {
+      "name": "pick-help",
+      "argv": [
+        "pick",
+        "--help"
+      ],
+      "exit": 0,
+      "expected_exit": 0,
+      "pass": true
+    },
+    {
+      "name": "cull-missing",
+      "argv": [
+        "cull",
+        "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\ui-qualification\\launcher-final1\\does not exist",
+        "--no-ai",
+        "--no-serve"
+      ],
+      "exit": 2,
+      "expected_exit": 2,
+      "pass": true
+    },
+    {
+      "name": "pick-missing",
+      "argv": [
+        "pick",
+        "C:\\Users\\Michael\\Documents\\GitHub\\docs\\fleet-deep-completion-2026-10-02\\photopicker\\ui-qualification\\launcher-final1\\does not exist",
+        "--profile",
+        "default",
+        "--dry-run"
+      ],
+      "exit": 2,
+      "expected_exit": 2,
+      "pass": true
+    },
+    {
+      "name": "unknown",
+      "argv": [
+        "not-a-command"
+      ],
+      "exit": 1,
+      "expected_exit": 1,
+      "pass": true
+    }
+  ],
+  "source_photos_unchanged": true,
+  "input_count": 5,
+  "guard_ok": true,
+  "boundaries": {
+    "boundary-cull-folder": {
+      "denials": []
+    },
+    "boundary-cull-help": {
+      "denials": []
+    },
+    "boundary-cull-missing": {
+      "denials": []
+    },
+    "boundary-pick-folder": {
+      "denials": []
+    },
+    "boundary-pick-help": {
+      "denials": []
+    },
+    "boundary-pick-missing": {
+      "denials": []
+    }
+  },
+  "boundary": "Sanitized environment; Python audit denies subprocess/registry/private source access, external and unowned loopback sockets. Not OS/native-I/O confinement."
+}

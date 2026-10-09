@@ -1,9 +1,63 @@
 # PhotoPicker STATUS
 
-**One-liner:** Cull-first photo utility — offline dedup + quality gate + optional Claude Vision rerank, local web UI for K/X review, export with manifest. Reusable library API (`pick_photos`, `cull`) still shipped.
+**As of 2026-10-03: local preparation EXHAUSTED_HERE; not release-ready or published.**
 
-**Version:** 0.14.0 (committed — `49fd7cd`, 2026-07-20; PyPI publish still queued, see `PENDING_MANUAL.md`).
-**Ladder position:** **RUNG 6 UPGRADE** landed (live cull progress in web UI). Next: RUNG 7 ENVISION (CockpitCloud fleet-preview panel + SiteGuide handoff format — see CHANGELOG "Envisioned").
+PhotoPicker is the existing library/CLI and local contact-sheet review utility for
+client-site asset intake. Big7 and Aries V2 profile/export commands are documented
+in RUNBOOK.md. Keep this utility; no replacement photo manager, cloud API or fleet
+integration was added.
+
+Candidate: `session/2026-08-07-ci-repair`, changes based on `7710fb15dd081d049fe5b53edecb8267a06065bd`.
+The exact reviewed commit is in the fleet's `photopicker/ui-qualification/LOCAL_COMMIT.json`.
+Package metadata remains 0.14.0; main remains `c628198bafda41d546c76309c4e47ea8f0148e97`.
+No push, main integration, model/provider call, private-photo use or publication.
+
+## Current local evidence
+
+- 429 offline pytest cases passed on Windows/Python3.10.11; Python statement
+  coverage 89.11% (1915/2149). Actual `tests/test_faces.py` inference excluded
+  before collection; faces.py remains in the coverage denominator. Other model
+  tests use stubs/fake clients. No semantic-quality claim.
+- Pinned Ruff0.15.20 passes. Declared Linux/Python3.10/3.11/3.12 CI is not run here.
+- Existing metadata/HEIC/JPEG/WebP/thumbnail exports, profile fixtures, HTTP request
+  guards, literal filenames, burst selection and restart evidence retained.
+- Actual Chrome154 local-handler review: keyboard, dialog focus/return, Escape,
+  reduced motion and 1280/390/320px layouts pass; 12 broad axe4.13 scans had no
+  violations. Follow-up corrected two ARIA groups and photo-overlay contrast;
+  targeted checks pass. Scanner manual-review contrast flags are documented,
+  not a claim of full accessibility certification.
+- Seven actual Windows launcher success/help/error checks pass, including a path
+  with spaces and an ampersand. Originals remain unchanged.
+
+Usable code and evidence: [candidate return](docs/verification/ui-2026-10-03/TASK_RETURN.md),
+[machine-readable requirements](docs/verification/ui-2026-10-03/REQUIREMENTS.json),
+[joint plan](docs/verification/ui-2026-10-03/JOINT_ACCEPTANCE.json).
+
+## Remaining release work
+
+- **PP-TARGET-MATRIX:** approved package environment with the declared `wheel`
+  dependency, fresh candidate wheel/sdist + hashes, artifact install/CLI smoke
+  and declared Python matrix. Current build1.5.0/setuptools78.1.0 exist; wheel
+  is missing. No dependency installation was authorized or performed.
+- **PP-JOINT-ACCEPTANCE:** Michael and agent record independent observations in
+  the joint plan. Narrator, high contrast, physical DPI and actual client-shoot
+  quality/performance remain unverified; real media and optional models require
+  their approved custody/execution route. Publish no fabricated accuracy claim.
+- **PP-RELEASE-DECISION:** Michael reviews the exact candidate and package/matrix/
+  joint evidence, then decides main integration and separately authorizes any
+  push/account/upload. Historical dist files are not current candidate artifacts.
+
+## Held proposals and historical evidence
+
+SiteGuide handoff format, CockpitCloud cull panel, RAW expansion, private-cloud
+intake/R2 and other parked proposals were not reactivated. The historical n8n
+workflow remains inactive; its cancelled plan is not renewed by this campaign.
+Live cull progress already exists via SSE; old "post-cull only" notes were stale.
+Historical performance on 2026-07-05 was 9.44s/500 and 17.74s/1000 synthetic photos
+on local Windows/Python3.10. This is not current-candidate performance or provider
+latency/billing evidence. Optional provider pricing and billing route are unverified.
+
+The following dated implementation log is historical, not current release proof.
 
 ## Ladder progress log
 
@@ -14,36 +68,3 @@
 | 2026-07-05 | **RUNG 1 HARDEN** done | v0.13: Vision retry+backoff, port fallback, malformed-session fallthrough, output/manifest permission errors, --overwrite guard, ImageUnreadable + web-UI 500 with filename, perf harness (500→9.4s / 1000→17.7s), demo folder, 250/250 tests, ruff-clean. |
 | 2026-07-05 | **RUNG 6 UPGRADE** done | v0.14: `CullProgressBroker` + `/progress` JSON + `/progress/stream` SSE + `SessionStore.hydrate` + `--live-progress` CLI + browser-first flow + progress-screen frontend. Vision-fail hang bug caught in self-review + fixed (falls back to offline order). 265/265 tests green (15 new: 9 broker + 3 HTTP + 3 CLI), ruff-clean. |
 | 2026-07-06 | Rung 6 continued | Big7 profile: clean-lines aesthetic bonus (weight 0.3) stacked additively on top of the people bonus. Rewards straight-framing / level-horizon shots that read as construction craftsmanship. 3 new tests: math, ranking-within-bucket, ordering-invariant (people-only still beats clean-lines-only). **273/273 tests green (was 270), ruff-clean.** `photopicker/profiles/big7.py` at 100% coverage. |
-
-## Live surface
-
-- `photopicker-cull FOLDER --top N` — main cull CLI (offline + optional AI rerank)
-- `photopicker --folder FOLDER --profile <name>` — legacy themed picks (aries / big7 / default / aries-gallery)
-- Web UI at `http://127.0.0.1:8765/` (K keep, X reject, U undo, arrows nav, Enter focus, F filter, E export, ? help)
-- Python API: `from photopicker import pick_photos, cull, CullResult`
-
-## What's green
-
-- 222/222 pytest (was 199/201 pre-fix at session start; fixed 2 aries warmth tests + added 23 new)
-- ruff `E/F/I/B/UP` clean
-- CI runs on py 3.10 / 3.11 / 3.12
-- End-to-end smoke: 20-photo cull → 5 keepers copied, web UI booted + shut down clean
-
-## Perf baseline (`scripts/perf_1k.py`, 2026-07-05, local Windows py 3.10)
-
-| n photos | top | total | twin-collapse | scoring | dedup | quality-gate |
-|---:|---:|---:|---:|---:|---:|---:|
-| 500 | 30 | **9.44s** | 12ms | 8.17s | 1.18s | 79ms |
-| 1000 | 30 | **17.74s** | 44ms | 15.12s | 2.50s | 71ms |
-
-Both well under the 10-minute finish-line gate. Vision rerank on top 100 keepers at ~1.5s per API call ≈ +150s in parallel (4 workers → ~40s wallclock), so a full 1000-photo run with `--prompt` still fits in ~1 minute total.
-
-## What's not green yet
-
-- No open-source-quality demo GIF or sample folder in `demo/` (Rung 5 in flight)
-- Live cull-progress in the web UI is post-cull only; big folders show a blank screen for ~15s (Rung 6 candidate — SSE progress stream)
-- `pillow_heif` `Image.Image.getdata` deprecation lands in Pillow 14 (2027-10); dedup.py:30 needs migration before then
-
-## Cost per Vision run (as designed)
-
-Sonnet 4.6 vision call ≈ ~2K input tokens (1568px JPEG) + ~50 output. At $3/M input + $15/M output → ~$0.007 per photo. Reranking 100 keepers ≈ $0.70. `--no-ai` stays $0.

@@ -1,5 +1,30 @@
 # PhotoPicker TODO
 
+## 2026-10-03 — capture dates and real HEIF export
+
+- [x] PP-METADATA: standard nested camera timestamps now reach gallery metadata; saved JPEG/WebP and file thumbnails preserve EXIF. Reproduced11new failures before correction. Originals and transient vision/preview behavior remain unchanged.
+- [x]80focused tests pass, including real HEIF decoding/public publish path. Actual4exports and PhotoPick manifest preserve capture date/dimensions/references. Pinned Ruff passes. Evidence: docs/verification/metadata-2026-10-03/TASK_RETURN.json; synthetic fixture committed with tests.
+- [ ] Continue remaining core/profile/culler/review UI and packaging qualification using synthetic data and installed tools. Preserve Michael candidate/main/publication, real-photo and optional-model gates. CHECKPOINTED; not full product completion or release.
+
+## 2026-09-24 — existing export acceptance verified
+
+- Current HEAD `4cf83d4`, initially clean; older dirty-branch wording below is
+  historical. No product code or tests changed in this verification pass.
+- Existing CLI/convert/hardening/EXIF suites: **62 passed in 9.09s**, using synthetic
+  images and StubClassifier. Socket/DNS/process negative controls blocked; no
+  unexpected I/O events. Outputs confined to fresh temporary storage. Initial
+  pytest capture tried reading Windows NUL; disabling unused capture fixed the
+  harness without relaxing the boundary.
+- Independently decoded all **54** JPEG/WebP outputs referenced by nine selections
+  from the actual CLI test manifest, including 400/800px thumbnails: unique paths,
+  correct format/dimensions, all inside the expected output directory.
+- Receipt: fleet job `20260924-213821-codex-007add/result.md`. Earlier manifest-only
+  inspection did not cover these existing tests; no missing export implementation
+  or repair is inferred. PNG data with HEIC filenames exercises dispatch, not the
+  real HEIC codec; model quality, real shoots and package publication remain separate.
+- Next: Michael reviews the existing publication/candidate decisions; preserve
+  private photos and optional-model/download gates. Source ownership unchanged.
+
 ## UPGRADE LANE 2026-08-05→06 (audit-born fixes — this lane made NO commits, NO pushes)
 
 **ANOMALY — read first.** Mid-session at 21:49 EDT, an outside actor (committer
@@ -241,7 +266,7 @@ Source of product truth: ..\AI_HUB.md.
 **Product improvement:** Document profiles for Big7 and Aries V2, keep tests green, and integrate only at asset intake points.
 
 **Next action:**
-- [ ] Document best profile/use command for Big7 and Aries V2.
+- [x] Document Big7 `big7` starting command and Aries V2 existing `aries-gallery` intake flow in README; no client photos processed and no install or integration performed.
 
 **Combine/separate call:** Shared utility; prevent duplicate photo pickers.
 
@@ -280,3 +305,44 @@ Source of product truth: ..\AI_HUB.md.
 - [ ] Reason panel in the focus view (half day): the session JSON already carries per-photo score, ai_score, and an ai_reason string the UI never renders — display them plus a client-side sharpness percentile in the Enter view. Matches FilterPixel's verified headline differentiator and the confirmed no-reasoning criticism of Aftershoot.
 - [ ] Override-rate line at export (2–3 hours): compare the K/X decisions already persisted in .photopicker-session.json against pipeline picks and print 'kept 27/30 — 10% override'. The honest accuracy metric per the verified Tov Studio teardown, and the seed for a defensible README accuracy claim.
 - [ ] XMP ratings export (1 day): embed xmp:Rating into exported JPEG copies via a stdlib APP1 segment splice — corrected from the original sidecar spec, since Lightroom ignores .xmp sidecars for JPEG/HEIC. Copies Optyx's verified Lightroom-integration pattern with no new dependencies.
+
+
+## 2026-10-03 — local review request and rendering correction
+
+- [x] Reject foreign-origin/host API requests and require JSON writes; render filename labels literally. Nine HTTP regressions and native browser red/green evidence saved.
+- [x] Replace six hard-coded core fixture paths with isolated temporary sources; preserve assertions.
+- [x] Document Big7 / Aries V2 profile and intake/export choices in RUNBOOK.md; historical packaging is not current release qualification.
+- Evidence: docs/verification/product-2026-10-03/TASK_RETURN.json;416 distinct passing behavioral cases across current/reused evidence (limitations retained),83 focused cases without denied I/O, six native Chrome journey checks, actual synthetic image + manifest.
+- [ ] PP-REVIEW-BURST: root completes existing similar-frame UI wiring and validates click/number-key swap through the existing API. Then finish keyboard/dialog/accessibility review and fresh packaging qualification where installed tooling permits; preserve model/private-photo/release gates.
+- Status CHECKPOINTED; main unchanged, no push/publication. Michael joint observations and manual gates in JOINT_ACCEPTANCE.json/TASK_RETURN.json.
+
+
+## 2026-10-03 — burst review and restart recovery completed locally
+
+- [x] Existing focus-view similar-frame controls wired: literal thumbnail labels, click/number/Enter selection, current-image cache identity and stale-AI clearing.
+- [x] Fresh-server reconstruction restores the selected frame and decision only for identical current group membership; malformed/foreign groups cannot introduce paths or stale scores.
+- [x] Keep/reject updates visible focus; aborted thumbnail delivery does not cause a second response.
+- Evidence: docs/verification/burst-2026-10-03/TASK_RETURN.json.79focused cases (73+6),13native initial checks +4fresh-server checks. Two actual exports match selected synthetic-3.jpg source hash; all originals unchanged.429combined behavioral cases with prior evidence reused. No model/private-photo/CI/release claim.
+- [ ] PP-REVIEW-ACCESSIBILITY: root finish keyboard/dialog focus handling, labels/reduced motion and practical narrow-screen review of existing local UI; fix demonstrated issues using same synthetic browser/handler. Then package/tooling gate and project requirement reconciliation. No optional-model/private-photo/production work.
+
+
+## 2026-10-03 — local candidate preparation exhausted
+
+- [x] PP-REVIEW-ACCESSIBILITY: native buttons, named/contained dialogs, Escape/return focus, reduced motion, contrast, compact layout and long filename captions.
+- [x] PP-WINDOWS-LAUNCHER: actual cmd.exe folder forwarding, quoted paths, help and nonzero status; local CRLF restored.
+- [x] Current Python3.10 offline qualification:429 passed,89.11% coverage including untested optional model code; Ruff0.15.20 clean. Actual face inference excluded.
+- [x] Source-bound readable/JSON requirements, outputs, joint plan, exact remaining gates and historical-status corrections saved in docs/verification/ui-2026-10-03/.
+- Local preparation EXHAUSTED_HERE; not release-ready or released. Gates: PP-TARGET-MATRIX, PP-JOINT-ACCEPTANCE, PP-RELEASE-DECISION. Held proposals stay held. Existing owners/main/untracked native cache preserved.
+- Root continues independent fleet work; Michael/release owner returns gate evidence to this directory. No blanket permission for models, client photos, installs, accounts, push or publication.
+
+## 2026-10-08 — recovery corrections implemented; review pending
+
+- [x] PP-01 atomic session saves with visible checkpoint failure and previous checkpoint preservation.
+- [x] PP-02 serialize decision/undo/swap/export updates and preserve focus movement.
+- [x] PP-03 show partial copy/XMP/manifest export failures and successful outputs.
+- [x] PP-04 reconcile uncertain session outcomes before another mutation; warn against blind export retry.
+- Base candidate13ae75e plus uncommitted local corrections. Verification and current review status: campaign photopicker/recovery-qualification/CURRENT_RETURN.json. Synthetic only; package/matrix, actual-device/media/model, independent review and release gates unchanged.
+
+- 2026-10-08 PhotoPicker recovery WIP: PP01 server correction and PP03 result/snapshot handling implemented;95webui tests pass before export snapshot follow-up,11export+1newconcurrent snapshot check pass afterward. Failed Windows replacement run retained; bounded retry tested. Uncommitted; UI PP02/03/04 remains next. Evidence: campaign photopicker/recovery-qualification/SERVER_CHECKPOINT.json. Gates unchanged.
+
+- 2026-10-08 PhotoPicker PP01–04 source corrections completed locally;96 guarded webui tests and6 deferred embedded-handler cases pass; Ruff and diff check pass. Latest independent review remains pending after unsupported model route error. Uncommitted, not release-ready; package/matrix, actual-device/media/model, integration/publication gates preserved. Evidence `photopicker/recovery-qualification/CURRENT_RETURN.json`.
