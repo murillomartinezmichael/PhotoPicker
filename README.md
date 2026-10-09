@@ -186,6 +186,27 @@ photopicker --folder ./photos --profile big7 --output ./curated
 photopicker --folder ./photos --profile default --json-out
 ```
 
+
+### Client-site starting points
+
+For **Big7 Construction**, start with `big7`; it creates repair/build buckets,
+with up to six picks per bucket. The profile uses CLIP labels, so use the
+approved environment that has the optional `[clip]` extra installed:
+
+```bash
+photopicker --folder ./shoot --profile big7 --output ./curated --manifest ./curated.json
+```
+
+For **Aries Outdoor Living V2**, the existing intake already calls
+`pick_photos(folder=src_folder, profile_name="aries-gallery")` in
+[`AriesOutdoorLiving-V2/scripts/import_photos.py`](../AriesOutdoorLiving-V2/scripts/import_photos.py).
+That profile deduplicates and filters the raw folder, assigns before/during/after
+phases, and sorts each phase chronologically for the project gallery. Use the
+existing importer and its approved dependency/photo route; this documentation
+does not perform an import or approve real-image choices. `aries` is the smaller
+hero-set profile (one frame per phase plus up to six others), not the V2 batch
+gallery profile.
+
 | Flag | Purpose |
 |---|---|
 | `--folder, -f` | Input folder (required) |

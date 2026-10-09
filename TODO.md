@@ -266,7 +266,7 @@ Source of product truth: ..\AI_HUB.md.
 **Product improvement:** Document profiles for Big7 and Aries V2, keep tests green, and integrate only at asset intake points.
 
 **Next action:**
-- [ ] Document best profile/use command for Big7 and Aries V2.
+- [x] Document Big7 `big7` starting command and Aries V2 existing `aries-gallery` intake flow in README; no client photos processed and no install or integration performed.
 
 **Combine/separate call:** Shared utility; prevent duplicate photo pickers.
 
