@@ -23,9 +23,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 import threading
 import time
 import webbrowser
+from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -177,6 +181,10 @@ def _promote_similar(candidate: Candidate, member: int) -> None:
     candidate.capture_time = capture.isoformat() if capture else None
 
 
+class CheckpointError(OSError):
+    """A session checkpoint could not be committed."""
+
+
 class SessionStore:
     """Thread-safe wrapper around a Session on disk."""
 
@@ -187,47 +195,80 @@ class SessionStore:
         self._save()
 
     def _save(self) -> None:
+        # Same-directory replacement keeps the last complete checkpoint intact.
+        temporary = None
         try:
-            self.session_path.write_text(json.dumps(self.session.to_dict(), indent=2))
-        except OSError as exc:  # non-fatal — UI keeps working, restart won't recover
-            log.warning("Could not persist session to %s: %s", self.session_path, exc)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.session_path.parent,
+                prefix=self.session_path.name + ".", suffix=".tmp", delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                json.dump(self.session.to_dict(), stream, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # Windows can briefly deny replacement while another process has
+            # the file open. Retry only that error, without touching the old file.
+            for attempt in range(3):
+                try:
+                    os.replace(temporary, self.session_path)
+                    break
+                except PermissionError:
+                    if attempt == 2:
+                        raise
+                    time.sleep(0.05)
+            temporary = None
+        except OSError as exc:
+            raise CheckpointError(str(exc)) from exc
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    log.warning("Could not remove incomplete checkpoint temporary file")
+
+    @contextmanager
+    def _mutation(self):
+        with self._lock:
+            previous = deepcopy(self.session)
+            try:
+                yield
+                self._save()
+            except Exception:
+                self.session = previous
+                raise
 
     def get(self) -> Session:
         with self._lock:
-            return self.session
+            return deepcopy(self.session)
 
     def decide(self, idx: int, decision: Decision) -> None:
-        with self._lock:
+        with self._mutation():
             if not (0 <= idx < len(self.session.candidates)):
                 raise IndexError(idx)
             if decision not in ("keep", "reject", ""):
                 raise ValueError(decision)
             self.session.candidates[idx].decision = decision
             self.session.history.append(idx)
-            self._save()
 
     def undo(self) -> int | None:
-        with self._lock:
+        with self._mutation():
             if not self.session.history:
                 return None
             idx = self.session.history.pop()
             self.session.candidates[idx].decision = ""
-            self._save()
             return idx
 
     def reset(self) -> None:
-        with self._lock:
+        with self._mutation():
             for c in self.session.candidates:
                 c.decision = ""
             self.session.history.clear()
-            self._save()
 
     def hydrate(self, new_session: Session) -> None:
         """Swap the underlying session — used when the cull thread finishes
         and the initially-empty store gets the real candidate set."""
-        with self._lock:
+        with self._mutation():
             self.session = new_session
-            self._save()
 
     def swap(self, idx: int, member: int) -> None:
         """Promote one of a candidate's near-duplicate frames to be the pick.
@@ -238,14 +279,13 @@ class SessionStore:
         frame. Deliberately not part of the undo history: it changes *which*
         file the slot points at, not the keep/reject decision on the slot.
         """
-        with self._lock:
+        with self._mutation():
             if not (0 <= idx < len(self.session.candidates)):
                 raise IndexError(idx)
             c = self.session.candidates[idx]
             if not (0 <= member < len(c.similar)):
                 raise IndexError(member)
             _promote_similar(c, member)
-            self._save()
 
     def keepers(self) -> list[Path]:
         with self._lock:
@@ -551,6 +591,10 @@ def make_handler(
                     self._send_text(HTTPStatus.NOT_FOUND, "not found")
             except ConnectionError:
                 return
+            except CheckpointError:
+                log.exception("Session checkpoint failed")
+                self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                "Session could not be saved. Change was not applied; check disk access and retry.")
             except Exception:
                 log.exception("POST %s failed", self.path)
                 self._send_text(HTTPStatus.INTERNAL_SERVER_ERROR, "server error")
@@ -735,37 +779,46 @@ def make_handler(
             except OSError as exc:
                 self._send_text(HTTPStatus.BAD_REQUEST, f"cannot create target: {exc}")
                 return
-            paths = (
-                store.undecided_keepers() if include_undecided else store.keepers()
-            )
+            session = store.get()
+            decisions = ("keep", "") if include_undecided else ("keep",)
+            paths = [Path(c.path) for c in session.candidates if c.decision in decisions]
             if not paths:
-                self._send_json({"exported": 0, "target": str(target_dir), "note": "nothing to export"})
+                self._send_json({"exported": 0, "requested": 0, "files": [], "failures": [],
+                                 "complete": True, "target": str(target_dir), "note": "nothing to export"})
                 return
             src_to_dest: dict[Path, Path] = {}
             rated = 0
+            failures = []
             for rank, src in enumerate(paths, start=1):
                 try:
                     dest = copy_or_transcode(src, target_dir, convert_heic=convert_heic)
                     src_to_dest[src] = dest
-                    if embed_xmp and embed_xmp_rating(
-                        dest, rating_for_rank(rank, len(paths))
-                    ):
-                        rated += 1
-                except Exception:
+                except Exception as exc:
                     log.exception("export failed for %s", src)
+                    failures.append({"file": src.name, "stage": "copy", "error": str(exc)})
+                    continue
+                if embed_xmp:
+                    try:
+                        if not embed_xmp_rating(dest, rating_for_rank(rank, len(paths))):
+                            raise ValueError("XMP rating was not written")
+                        rated += 1
+                    except Exception as exc:
+                        failures.append({"file": src.name, "stage": "xmp", "error": str(exc)})
             written = [p.name for p in src_to_dest.values()]
             payload: dict[str, Any] = {
                 "exported": len(written),
                 "target": str(target_dir),
                 "files": written,
+                "requested": len(paths),
+                "failures": failures,
             }
             if embed_xmp:
                 payload["xmp_embedded"] = rated
-            override = _override_stats(store.get())
+            override = _override_stats(session)
             if override is not None:
                 payload["override"] = override
             if write_manifest and src_to_dest:
-                manifest = _build_export_manifest(store.get(), src_to_dest, target_dir)
+                manifest = _build_export_manifest(session, src_to_dest, target_dir)
                 manifest_path = target_dir / "manifest.json"
                 try:
                     manifest_path.write_text(json.dumps(manifest, indent=2))
@@ -773,6 +826,7 @@ def make_handler(
                 except OSError as exc:
                     log.warning("manifest write failed: %s", exc)
                     payload["manifest_error"] = str(exc)
+            payload["complete"] = not failures and "manifest_error" not in payload
             self._send_json(payload)
 
     return Handler
@@ -1474,7 +1528,7 @@ INDEX_HTML = r"""<!doctype html>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
-const state = { session: null, focus: 0, filter: 'all', sort: 'score', swapping: false };
+const state = { session: null, focus: 0, filter: 'all', sort: 'score', swapping: false, mutating: false, needsSync: false, epoch: 0 };
 
 function photoUrl(idx, width, c, member) {
   // The v param busts the browser cache when a swap changes which file
@@ -1533,6 +1587,7 @@ function updateFilterCounts() {
 
 async function fetchState() {
   const r = await fetch('/state');
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return await r.json();
 }
 async function postJSON(path, body) {
@@ -1636,12 +1691,10 @@ function updatePos() {
 }
 
 async function refresh() {
-  state.session = await fetchState();
-  $('src').textContent = state.session.source_folder;
-  renderLeds(state.session.counts);
-  updateFilterCounts();
-  renderGrid();
-  updatePos();
+  const epoch = state.epoch;
+  const session = await fetchState();
+  if (state.mutating || state.epoch !== epoch) return;
+  applySession(session);
 }
 
 function toast(msg, ms = 1400) {
@@ -1652,24 +1705,54 @@ function toast(msg, ms = 1400) {
   toast._t = setTimeout(() => t.classList.remove('on'), ms);
 }
 
-async function decide(decision) {
-  if (!state.session) return;
-  if (state.swapping) return toast('Wait for the pick change to finish');
-  const idx = state.focus;
-  const focused = state.session.candidates.find((c) => c.idx === idx);
-  if (focused && focused.rejected_reason) {
-    toast('cannot mark a pipeline reject — filter Pipeline rejects to rescue');
-    return;
-  }
-  const r = await postJSON('/decision', { idx, decision });
-  if (!r.ok) return toast('decision failed');
-  state.session = r.json.state;
-  renderLeds(state.session.counts);
+function applySession(session) {
+  state.session = session;
+  $('src').textContent = session.source_folder;
+  renderLeds(session.counts);
   updateFilterCounts();
   renderGrid();
   updatePos();
-  if (decision === 'keep' || decision === 'reject') advanceToUndecided();
-  if ($('focus-view').classList.contains('on')) openFocus();
+}
+async function reconcileSession() {
+  state.needsSync = true;
+  try {
+    applySession(await fetchState());
+    state.needsSync = false;
+    toast('Current session reloaded. Review it before making another change.', 6000);
+  } catch (error) {
+    toast('Session unavailable. Changes are blocked until it can be reloaded.', 6000);
+  }
+}
+async function runMutation(path, body, apply) {
+  if (state.mutating) return toast('Wait for the current operation to finish');
+  state.mutating = true;
+  state.epoch++;
+  try {
+    if (state.needsSync) { await reconcileSession(); return; }
+    const r = await postJSON(path, body);
+    if (!r.ok) {
+      await reconcileSession();
+      return toast('Change failed: ' + (r.text || r.status) + ' Review the current session.', 6000);
+    }
+    apply(r.json);
+  } catch (error) {
+    await reconcileSession();
+    toast('Change outcome was unconfirmed. Review the reloaded session before retrying.', 6000);
+  } finally {
+    state.mutating = false;
+  }
+}
+
+async function decide(decision) {
+  if (!state.session) return;
+  const idx = state.focus;
+  const focused = state.session.candidates.find((c) => c.idx === idx);
+  if (focused && focused.rejected_reason) return toast('cannot mark a pipeline reject — filter Pipeline rejects to rescue');
+  return runMutation('/decision', {idx, decision}, (j) => {
+    applySession(j.state);
+    if (state.focus === idx && (decision === 'keep' || decision === 'reject')) advanceToUndecided();
+    if ($('focus-view').classList.contains('on')) openFocus();
+  });
 }
 
 function advanceToUndecided() {
@@ -1705,18 +1788,16 @@ function move(delta) {
 }
 
 async function undo() {
-  if (state.swapping) return toast('Wait for the pick change to finish');
-  const r = await postJSON('/undo');
-  if (!r.ok) return toast('nothing to undo');
-  if (r.json.undone_idx == null) return toast('nothing to undo');
-  state.session = r.json.state;
-  state.focus = r.json.undone_idx;
-  renderLeds(state.session.counts);
-  updateFilterCounts();
-  renderGrid();
-  scrollFocusIntoView();
-  updatePos();
-  toast('undone');
+  const focus = state.focus;
+  return runMutation('/undo', {}, (j) => {
+    applySession(j.state);
+    if (j.undone_idx == null) return toast('nothing to undo');
+    if (state.focus === focus) state.focus = j.undone_idx;
+    renderGrid();
+    scrollFocusIntoView();
+    updatePos();
+    toast('undone');
+  });
 }
 
 function qualityPercentile(c) {
@@ -1830,19 +1911,14 @@ function renderSimilar(c) {
 }
 
 async function swapFrame(idx, member) {
-  if (state.swapping) return;
+  if (state.mutating) return toast('Wait for the current operation to finish');
   state.swapping = true;
-  const candidate = state.session.candidates.find((c) => c.idx === idx);
-  renderSimilar(candidate);
+  renderSimilar(state.session.candidates.find((c) => c.idx === idx));
   try {
-    const r = await postJSON('/swap', {idx, member});
-    if (!r.ok) throw new Error(r.text || `HTTP ${r.status}`);
-    state.session = r.json.state;
-    renderGrid();
-    updatePos();
-    toast('Pick changed — select the previous frame to switch back');
-  } catch (error) {
-    toast('Could not change pick: ' + error.message);
+    await runMutation('/swap', {idx, member}, (j) => {
+      applySession(j.state);
+      toast('Pick changed — select the previous frame to switch back');
+    });
   } finally {
     state.swapping = false;
     if ($('focus-view').classList.contains('on')) {
@@ -1865,32 +1941,41 @@ function openExport() {
 function closeExport() { closeDialog('export-dialog', () => $('btn-export')); }
 
 async function runExport() {
-  if (state.swapping) return toast('Wait for the pick change to finish');
+  if (state.mutating) return toast('Wait for the current operation to finish');
   const target = $('export-target').value.trim();
   if (!target) return;
-  const body = {
-    target,
-    include_undecided: $('export-undecided').checked,
-    convert_heic: !$('export-no-convert').checked,
-    write_manifest: $('export-manifest').checked,
-    xmp: $('export-xmp').checked,
-  };
-  const r = await postJSON('/export', body);
+  state.mutating = true;
+  state.epoch++;
   const box = $('export-result');
   box.style.display = 'block';
-  if (!r.ok) {
-    box.classList.add('err');
-    box.textContent = 'Export failed: ' + (r.text || r.status);
-    return;
-  }
-  const j = r.json;
   box.classList.remove('err');
-  let msg = `Copied ${j.exported} keepers → ${j.target}`;
-  if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
-  if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
-  if (j.override) msg += ` · ${j.override.line}`;
-  box.textContent = msg;
-  toast(msg);
+  box.textContent = 'Exporting…';
+  try {
+    if (state.needsSync) { await reconcileSession(); box.textContent = 'Review the current session before exporting.'; return; }
+    const r = await postJSON('/export', {
+      target,
+      include_undecided: $('export-undecided').checked,
+      convert_heic: !$('export-no-convert').checked,
+      write_manifest: $('export-manifest').checked,
+      xmp: $('export-xmp').checked,
+    });
+    if (!r.ok) throw new Error(r.text || `HTTP ${r.status}`);
+    const j = r.json;
+    let msg = `Copied ${j.exported} keepers → ${j.target}`;
+    if (j.manifest_written) msg += ` (+ ${j.manifest_written})`;
+    if (j.xmp_embedded != null) msg += ` · ${j.xmp_embedded} XMP-rated`;
+    if (j.override) msg += ` · ${j.override.line}`;
+    for (const failure of j.failures || []) msg += ` · ${failure.file} (${failure.stage}): ${failure.error}`;
+    if (j.manifest_error) msg += ` · Manifest failed: ${j.manifest_error}`;
+    if (j.complete === false) { box.classList.add('err'); msg += ' · Export incomplete; check the output before retrying.'; }
+    box.textContent = msg;
+    toast(msg, 6000);
+  } catch (error) {
+    box.classList.add('err');
+    box.textContent = 'Export outcome unconfirmed: ' + error.message + '. Check the output folder before retrying; files may already exist.';
+  } finally {
+    state.mutating = false;
+  }
 }
 
 function openHelp() { openDialog('help-dialog', 'help-close'); }

@@ -334,3 +334,15 @@ Source of product truth: ..\AI_HUB.md.
 - [x] Source-bound readable/JSON requirements, outputs, joint plan, exact remaining gates and historical-status corrections saved in docs/verification/ui-2026-10-03/.
 - Local preparation EXHAUSTED_HERE; not release-ready or released. Gates: PP-TARGET-MATRIX, PP-JOINT-ACCEPTANCE, PP-RELEASE-DECISION. Held proposals stay held. Existing owners/main/untracked native cache preserved.
 - Root continues independent fleet work; Michael/release owner returns gate evidence to this directory. No blanket permission for models, client photos, installs, accounts, push or publication.
+
+## 2026-10-08 — recovery corrections implemented; review pending
+
+- [x] PP-01 atomic session saves with visible checkpoint failure and previous checkpoint preservation.
+- [x] PP-02 serialize decision/undo/swap/export updates and preserve focus movement.
+- [x] PP-03 show partial copy/XMP/manifest export failures and successful outputs.
+- [x] PP-04 reconcile uncertain session outcomes before another mutation; warn against blind export retry.
+- Base candidate13ae75e plus uncommitted local corrections. Verification and current review status: campaign photopicker/recovery-qualification/CURRENT_RETURN.json. Synthetic only; package/matrix, actual-device/media/model, independent review and release gates unchanged.
+
+- 2026-10-08 PhotoPicker recovery WIP: PP01 server correction and PP03 result/snapshot handling implemented;95webui tests pass before export snapshot follow-up,11export+1newconcurrent snapshot check pass afterward. Failed Windows replacement run retained; bounded retry tested. Uncommitted; UI PP02/03/04 remains next. Evidence: campaign photopicker/recovery-qualification/SERVER_CHECKPOINT.json. Gates unchanged.
+
+- 2026-10-08 PhotoPicker PP01–04 source corrections completed locally;96 guarded webui tests and6 deferred embedded-handler cases pass; Ruff and diff check pass. Latest independent review remains pending after unsupported model route error. Uncommitted, not release-ready; package/matrix, actual-device/media/model, integration/publication gates preserved. Evidence `photopicker/recovery-qualification/CURRENT_RETURN.json`.
